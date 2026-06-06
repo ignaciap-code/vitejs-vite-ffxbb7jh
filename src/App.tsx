@@ -92,19 +92,45 @@ async function cargarSlots(): Promise<Slot[]> {
   return (data as Slot[]) || [];
 }
 
-function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => void }) {
-  const [psicologaFiltro, setPsicologaFiltro] = useState<number | null>(null);
-  const [slotSel, setSlotSel] = useState<Slot | null>(null);
+// ─── BANNER DE CRISIS ─────────────────────────────────────────────────────────
+function BannerCrisis() {
+  const [visible, setVisible] = useState(true);
+  if (!visible) return null;
+  return (
+    <div style={{
+      background: '#fff7ed', borderBottom: '1.5px solid #fed7aa',
+      padding: '12px 24px',
+    }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>
+          <span style={{ fontWeight: 800 }}>🆘 ¿Estás en crisis?</span>
+          {' '}En horario hábil dirígete a <strong>UPA o DAE</strong>.
+          Fuera de horario ve a <strong>urgencias</strong>, llama al{' '}
+          <a href="tel:#4141" style={{ color: '#92400e', fontWeight: 800 }}>#4141</a>
+          {' '}o accede al{' '}
+          <a href="https://www.programaquedatechile.cl" target="_blank" rel="noopener noreferrer"
+            style={{ color: '#92400e', fontWeight: 800, textDecoration: 'underline' }}>
+            chat del Programa Quédate
+          </a>.
+        </div>
+        <button onClick={() => setVisible(false)} style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: '#92400e', fontSize: 18, padding: 0, flexShrink: 0,
+        }}>×</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL DE RESERVA ─────────────────────────────────────────────────────────
+function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => void; onExito: (s: Slot) => void }) {
+  const p = PSICOLOGAS.find(x => x.id === slot.psicologa_id)!;
   const [nombre, setNombre] = useState('');
   const [rut, setRut] = useState('');
   const [carrera, setCarrera] = useState('');
   const [correo, setCorreo] = useState('');
   const [errores, setErrores] = useState<Record<string, string>>({});
-  const [exito, setExito] = useState<Slot | null>(null);
   const [cargando, setCargando] = useState(false);
-
-  const disponibles = slots.filter(s => s.disponible && !s.realizada);
-  const filtrados = psicologaFiltro ? disponibles.filter(s => s.psicologa_id === psicologaFiltro) : disponibles;
 
   async function handleReservar() {
     const e: Record<string, string> = {};
@@ -113,7 +139,6 @@ function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => v
     if (!carrera) e.carrera = 'Requerido';
     if (!correo.includes('@')) e.correo = 'Correo inválido';
     if (Object.keys(e).length) { setErrores(e); return; }
-    if (!slotSel) return;
     setCargando(true);
     const { error } = await supabase.from('slots').update({
       disponible: false,
@@ -121,14 +146,108 @@ function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => v
       rut_estudiante: rut.trim(),
       carrera,
       correo_estudiante: correo.trim(),
-    }).eq('id', slotSel.id);
-    if (!error) {
-      setExito(slotSel);
-      setSlotSel(null);
-      setNombre(''); setRut(''); setCarrera(''); setCorreo(''); setErrores({});
-      recargar();
-    }
+    }).eq('id', slot.id);
+    if (!error) onExito(slot);
     setCargando(false);
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000, padding: 16,
+    }}>
+      <div style={{
+        background: 'white', borderRadius: 20, padding: 24,
+        width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 12, background: p.color, color: 'white',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13,
+            }}>{p.avatar}</div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#1a1040' }}>{p.nombre}</div>
+              <div style={{ fontSize: 13, color: '#7b6fa0' }}>{formatFecha(slot.fecha)} · {slot.hora}</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            background: '#f5f3ff', border: 'none', borderRadius: 8,
+            width: 32, height: 32, fontSize: 18, cursor: 'pointer', color: '#7b6fa0',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>×</button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Nombre completo</label>
+            <input type="text" value={nombre} onChange={e => { setNombre(e.target.value); setErrores(p => ({...p, nombre: ''})); }}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
+                border: `1.5px solid ${errores.nombre ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
+            {errores.nombre && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.nombre}</div>}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>RUT</label>
+              <input type="text" value={rut} placeholder="12.345.678-9"
+                onChange={e => { setRut(e.target.value); setErrores(p => ({...p, rut: ''})); }}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
+                  border: `1.5px solid ${errores.rut ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
+              {errores.rut && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.rut}</div>}
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Correo institucional</label>
+              <input type="email" value={correo}
+                onChange={e => { setCorreo(e.target.value); setErrores(p => ({...p, correo: ''})); }}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
+                  border: `1.5px solid ${errores.correo ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
+              {errores.correo && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.correo}</div>}
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Carrera</label>
+            <select value={carrera} onChange={e => { setCarrera(e.target.value); setErrores(p => ({...p, carrera: ''})); }}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
+                border: `1.5px solid ${errores.carrera ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none', background: 'white' }}>
+              <option value="">Selecciona...</option>
+              {CARRERAS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {errores.carrera && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.carrera}</div>}
+          </div>
+
+          {/* Aviso de privacidad */}
+          <div style={{ fontSize: 11, color: '#a89ec0', background: '#f9f8ff', borderRadius: 8, padding: '8px 12px' }}>
+            📧 Tu correo será usado únicamente para enviarte la confirmación y recordatorio de tu hora.
+          </div>
+        </div>
+
+        <button onClick={handleReservar} disabled={cargando} style={{
+          width: '100%', marginTop: 20, padding: 13,
+          background: cargando ? '#a89ec0' : '#3d2f7a', color: 'white',
+          border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 15,
+          cursor: cargando ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+        }}>{cargando ? 'Agendando...' : 'Confirmar reserva'}</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── VISTA ESTUDIANTE ─────────────────────────────────────────────────────────
+function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => void }) {
+  const [psicologaFiltro, setPsicologaFiltro] = useState<number | null>(null);
+  const [slotSel, setSlotSel] = useState<Slot | null>(null);
+  const [exito, setExito] = useState<Slot | null>(null);
+
+  const disponibles = slots.filter(s => s.disponible && !s.realizada);
+  const filtrados = psicologaFiltro ? disponibles.filter(s => s.psicologa_id === psicologaFiltro) : disponibles;
+
+  function handleExito(s: Slot) {
+    setSlotSel(null);
+    setExito(s);
+    recargar();
   }
 
   if (exito) return (
@@ -136,20 +255,20 @@ function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => v
       <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
       <h2 style={{ fontSize: 22, fontWeight: 900, color: '#1a1040', marginBottom: 8 }}>¡Hora agendada!</h2>
       <p style={{ color: '#7b6fa0', marginBottom: 8 }}>{PSICOLOGAS.find(p => p.id === exito.psicologa_id)?.nombre}</p>
-      <p style={{ fontWeight: 700, color: '#3d2f7a', marginBottom: 16 }}>{formatFecha(exito.fecha)} a las {exito.hora}</p>
+      <p style={{ fontWeight: 700, color: '#3d2f7a', marginBottom: 20 }}>{formatFecha(exito.fecha)} a las {exito.hora}</p>
       <a href={buildGoogleCalendarUrl({
         titulo: `Sesión Bienestar Estudiantil — ${PSICOLOGAS.find(p => p.id === exito.psicologa_id)?.nombre}`,
         fecha: exito.fecha, hora: exito.hora,
         descripcion: `Sesión de atención psicológica en Bienestar Estudiantil UFT.\nPsicóloga: ${PSICOLOGAS.find(p => p.id === exito.psicologa_id)?.nombre}\nContacto: ${CORREO_BIENESTAR}`,
       })} target="_blank" rel="noopener noreferrer" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-        width: '100%', padding: '11px', background: '#f0fdf4', border: '1.5px solid #86efac',
-        borderRadius: 10, fontWeight: 700, fontSize: 13, color: '#166534',
-        textDecoration: 'none', boxSizing: 'border-box', marginBottom: 10,
+        width: '100%', padding: '12px', background: '#f0fdf4', border: '1.5px solid #86efac',
+        borderRadius: 12, fontWeight: 700, fontSize: 14, color: '#166534',
+        textDecoration: 'none', boxSizing: 'border-box', marginBottom: 12,
       }}>📅 Agregar a Google Calendar</a>
       <button onClick={() => setExito(null)} style={{
-        padding: '12px 28px', background: '#3d2f7a', color: 'white',
-        border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14,
+        width: '100%', padding: '12px 28px', background: '#3d2f7a', color: 'white',
+        border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 14,
         cursor: 'pointer', fontFamily: 'inherit',
       }}>Agendar otra hora</button>
     </div>
@@ -157,8 +276,9 @@ function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => v
 
   return (
     <div>
+      {slotSel && <ModalReserva slot={slotSel} onClose={() => setSlotSel(null)} onExito={handleExito} />}
       <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a1040', marginBottom: 4 }}>Agendar hora</h2>
-      <p style={{ color: '#7b6fa0', marginBottom: 20, fontSize: 14 }}>Selecciona una psicóloga y un horario disponible</p>
+      <p style={{ color: '#7b6fa0', marginBottom: 20, fontSize: 14 }}>Selecciona un horario disponible</p>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
         <button onClick={() => setPsicologaFiltro(null)} style={{
           padding: '8px 14px', borderRadius: 8, border: '1.5px solid',
@@ -183,84 +303,27 @@ function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => v
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filtrados.map(s => {
             const p = PSICOLOGAS.find(x => x.id === s.psicologa_id)!;
-            const sel = slotSel?.id === s.id;
             return (
               <div key={s.id} style={{
                 background: 'white', borderRadius: 14, padding: 16,
-                border: `1.5px solid ${sel ? p.color : '#ede9f8'}`,
-                boxShadow: sel ? `0 0 0 3px ${p.color}22` : 'none',
+                border: '1.5px solid #ede9f8',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
-                {/* Solo este div abre/cierra el slot */}
-                <div
-                  onClick={() => setSlotSel(sel ? null : s)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 10, background: p.color, color: 'white',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12,
-                    }}>{p.avatar}</div>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1040' }}>{p.nombre}</div>
-                      <div style={{ fontSize: 12, color: '#7b6fa0' }}>{formatFecha(s.fecha)} · {s.hora}</div>
-                    </div>
-                  </div>
-                  <div style={{ padding: '4px 10px', borderRadius: 6, background: '#f0fdf4', color: '#166534', fontSize: 12, fontWeight: 700 }}>
-                    {sel ? '▲ Cerrar' : 'Disponible'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10, background: p.color, color: 'white',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12,
+                  }}>{p.avatar}</div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1040' }}>{p.nombre}</div>
+                    <div style={{ fontSize: 12, color: '#7b6fa0' }}>{formatFecha(s.fecha)} · {s.hora}</div>
                   </div>
                 </div>
-
-                {/* Formulario — clic aquí NO cierra el slot */}
-                {sel && (
-                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #ede9f8' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      {[
-                        { label: 'Nombre completo', val: nombre, set: setNombre, key: 'nombre', type: 'text', full: true },
-                        { label: 'RUT (ej: 12.345.678-9)', val: rut, set: setRut, key: 'rut', type: 'text', full: false },
-                        { label: 'Correo institucional', val: correo, set: setCorreo, key: 'correo', type: 'email', full: false },
-                      ].map(f => (
-                        <div key={f.key} style={{ gridColumn: f.full ? '1 / -1' : 'auto' }}>
-                          <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>{f.label}</label>
-                          <input
-                            type={f.type}
-                            value={f.val}
-                            onClick={e => e.stopPropagation()}
-                            onChange={e => { f.set(e.target.value); setErrores(prev => ({ ...prev, [f.key]: '' })); }}
-                            style={{
-                              width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                              border: `1.5px solid ${errores[f.key] ? '#e05a5a' : '#dcd7f0'}`,
-                              fontSize: 13, fontFamily: 'inherit', outline: 'none',
-                            }}
-                          />
-                          {errores[f.key] && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores[f.key]}</div>}
-                        </div>
-                      ))}
-                      <div>
-                        <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Carrera</label>
-                        <select
-                          value={carrera}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => { setCarrera(e.target.value); setErrores(prev => ({ ...prev, carrera: '' })); }}
-                          style={{
-                            width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                            border: `1.5px solid ${errores.carrera ? '#e05a5a' : '#dcd7f0'}`,
-                            fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
-                          }}
-                        >
-                          <option value="">Selecciona...</option>
-                          {CARRERAS.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                        {errores.carrera && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.carrera}</div>}
-                      </div>
-                    </div>
-                    <button onClick={handleReservar} disabled={cargando} style={{
-                      width: '100%', marginTop: 14, padding: 12,
-                      background: cargando ? '#a89ec0' : '#3d2f7a', color: 'white',
-                      border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14,
-                      cursor: cargando ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                    }}>{cargando ? 'Agendando...' : 'Confirmar reserva'}</button>
-                  </div>
-                )}
+                <button onClick={() => setSlotSel(s)} style={{
+                  padding: '8px 16px', background: '#3d2f7a', color: 'white',
+                  border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>Reservar</button>
               </div>
             );
           })}
@@ -270,6 +333,7 @@ function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => v
   );
 }
 
+// ─── VISTA CANCELAR ───────────────────────────────────────────────────────────
 function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => void }) {
   const [rut, setRut] = useState('');
   const [rutBuscado, setRutBuscado] = useState<string | null>(null);
@@ -300,8 +364,7 @@ function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => voi
     const p = PSICOLOGAS.find(x => x.id === s.psicologa_id);
     const subject = encodeURIComponent(`Solicitud de cancelación — ${s.nombre_estudiante}`);
     const body = encodeURIComponent(
-      `Estimado equipo de Bienestar y Salud Mental,\n\n` +
-      `Solicito cancelar mi sesión con menos de 24 horas de anticipación.\n\n` +
+      `Estimado equipo de Bienestar y Salud Mental,\n\nSolicito cancelar mi sesión con menos de 24 horas de anticipación.\n\n` +
       `Mis datos:\n• Nombre: ${s.nombre_estudiante}\n• RUT: ${s.rut_estudiante}\n` +
       `• Correo: ${s.correo_estudiante}\n• Psicóloga: ${p?.nombre}\n` +
       `• Fecha y hora: ${formatFecha(s.fecha)} a las ${s.hora}\n\nSaludos`
@@ -316,11 +379,8 @@ function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => voi
       <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
         <input value={rut} onChange={e => { setRut(e.target.value); setError(''); }}
           onKeyDown={e => e.key === 'Enter' && buscar()} placeholder="12.345.678-9"
-          style={{
-            flex: 1, padding: '10px 14px', borderRadius: 10, boxSizing: 'border-box',
-            border: `1.5px solid ${error ? '#e05a5a' : '#dcd7f0'}`,
-            fontSize: 14, fontFamily: 'inherit', outline: 'none',
-          }} />
+          style={{ flex: 1, padding: '10px 14px', borderRadius: 10, boxSizing: 'border-box',
+            border: `1.5px solid ${error ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
         <button onClick={buscar} style={{
           padding: '10px 20px', background: '#3d2f7a', color: 'white',
           border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14,
@@ -337,10 +397,8 @@ function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => voi
         return (
           <div key={s.id} style={{ background: 'white', borderRadius: 14, padding: 16, border: '1.5px solid #ede9f8', marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: 10, background: p.color, color: 'white',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12,
-              }}>{p.avatar}</div>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: p.color, color: 'white',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12 }}>{p.avatar}</div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1040' }}>{p.nombre}</div>
                 <div style={{ fontSize: 12, color: '#7b6fa0' }}>{formatFecha(s.fecha)} · {s.hora}</div>
@@ -373,6 +431,7 @@ function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => voi
   );
 }
 
+// ─── PANEL ADMIN ──────────────────────────────────────────────────────────────
 function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }) {
   const [tab, setTab] = useState<'horarios' | 'reservas'>('reservas');
   const [psicologaFiltro, setPsicologaFiltro] = useState<number>(1);
@@ -565,6 +624,7 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
   );
 }
 
+// ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
 export default function App() {
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [vista, setVista] = useState<'estudiante' | 'cancelar' | 'admin'>('estudiante');
@@ -628,6 +688,10 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Banner de crisis — siempre visible */}
+      <BannerCrisis />
+
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px 80px' }}>
         {vista === 'estudiante' && <VistaEstudiante slots={slots} recargar={recargar} />}
         {vista === 'cancelar' && <VistaCancelar slots={slots} recargar={recargar} />}
@@ -640,11 +704,9 @@ export default function App() {
               onChange={e => { setAdminPass(e.target.value); setAdminError(false); }}
               onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
               placeholder="Contraseña"
-              style={{
-                width: '100%', padding: '12px 16px', borderRadius: 10, boxSizing: 'border-box',
+              style={{ width: '100%', padding: '12px 16px', borderRadius: 10, boxSizing: 'border-box',
                 border: `1.5px solid ${adminError ? '#e05a5a' : '#dcd7f0'}`,
-                fontSize: 14, marginBottom: 8, fontFamily: 'inherit', outline: 'none',
-              }} />
+                fontSize: 14, marginBottom: 8, fontFamily: 'inherit', outline: 'none' }} />
             {adminError && <div style={{ fontSize: 12, color: '#e05a5a', marginBottom: 8 }}>Contraseña incorrecta</div>}
             <button onClick={handleAdminLogin} style={{
               width: '100%', padding: 12, background: '#3d2f7a', color: 'white',
