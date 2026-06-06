@@ -147,7 +147,21 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
       carrera,
       correo_estudiante: correo.trim(),
     }).eq('id', slot.id);
-    if (!error) onExito(slot);
+    if (!error) {
+      const psi = PSICOLOGAS.find(x => x.id === slot.psicologa_id);
+      fetch("/api/send-confirmation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: nombre.trim(),
+          correo: correo.trim(),
+          psicologa: psi?.nombre,
+          fecha: formatFecha(slot.fecha),
+          hora: slot.hora,
+        }),
+      });
+      onExito(slot);
+    }
     setCargando(false);
   }
 
