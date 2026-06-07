@@ -306,12 +306,7 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
                   style={{ marginTop: 2, width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
                 />
                 <span style={{ fontSize: 12, color: '#4a4560', lineHeight: 1.5 }}>
-                  He leído y acepto que mis datos personales (nombre, RUT, carrera y correo) sean tratados por la Unidad de Bienestar y Salud Mental UFT con el fin de gestionar mi atención, conforme a la{' '}
-                  <button
-                    onClick={e => { e.preventDefault(); setVerPolitica(true); }}
-                    style={{ background: 'none', border: 'none', padding: 0, color: '#3d2f7a', fontWeight: 700, fontSize: 12, cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}
-                  >Política de Privacidad</button>
-                  {' '}y la Ley N° 21.719 de Protección de Datos Personales.
+                  He leído y acepto que mis datos personales (nombre, RUT, carrera y correo) serán tratados por la Unidad de Bienestar y Salud Mental UFT, con la única finalidad de gestionar mi atención.
                 </span>
               </label>
               {errores.terminos && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 6 }}>{errores.terminos}</div>}
