@@ -92,15 +92,70 @@ async function cargarSlots(): Promise<Slot[]> {
   return (data as Slot[]) || [];
 }
 
+// ─── POLÍTICA DE PRIVACIDAD ───────────────────────────────────────────────────
+function PoliticaPrivacidad({ onClose }: { onClose: () => void }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 2000, padding: 16,
+    }}>
+      <div style={{
+        background: 'white', borderRadius: 20, padding: 28,
+        width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 17, fontWeight: 900, color: '#1a1040', margin: 0 }}>Política de Privacidad</h2>
+          <button onClick={onClose} style={{
+            background: '#f5f3ff', border: 'none', borderRadius: 8,
+            width: 32, height: 32, fontSize: 18, cursor: 'pointer', color: '#7b6fa0',
+          }}>×</button>
+        </div>
+
+        <div style={{ fontSize: 13, color: '#4a4560', lineHeight: 1.7 }}>
+          <p style={{ color: '#7b6fa0', fontSize: 12, marginBottom: 16 }}>
+            Unidad de Bienestar y Salud Mental — Dirección de Asuntos Estudiantiles — Universidad Finis Terrae<br/>
+            Última actualización: junio 2026
+          </p>
+
+          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6 }}>1. Responsable del tratamiento</h3>
+          <p>La <strong>Unidad de Bienestar y Salud Mental</strong>, dependiente de la Dirección de Asuntos Estudiantiales de la Universidad Finis Terrae, es responsable del tratamiento de los datos personales recopilados a través de esta plataforma. Contacto: <a href="mailto:bienestarysaludmental@uft.cl" style={{ color: '#3d2f7a' }}>bienestarysaludmental@uft.cl</a></p>
+
+          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>2. Datos que recopilamos</h3>
+          <p>Al agendar una hora, recopilamos exclusivamente: nombre completo, RUT, carrera y correo electrónico institucional. <strong>No recopilamos</strong> información sobre el motivo de consulta, diagnósticos ni ningún dato de salud mental.</p>
+
+          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>3. Finalidad del tratamiento</h3>
+          <p>Sus datos se utilizan exclusivamente para: gestionar y confirmar la reserva de hora de atención, y enviar recordatorios de la sesión agendada.</p>
+
+          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>4. Base de legitimación</h3>
+          <p>El tratamiento se basa en el <strong>consentimiento expreso, libre, específico e informado</strong> que usted otorga al momento de agendar su hora, conforme a la Ley N° 21.719 sobre Protección de Datos Personales de Chile.</p>
+
+          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>5. Almacenamiento y seguridad</h3>
+          <p>Sus datos se almacenan en servidores seguros provistos por <strong>Supabase</strong> (infraestructura en la nube bajo estándares de seguridad internacionales). El acceso está restringido exclusivamente al equipo de la Unidad de Bienestar y Salud Mental.</p>
+
+          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>6. Conservación de datos</h3>
+          <p>Sus datos serán conservados durante el período académico activo y eliminados o anonimizados una vez que dejen de ser necesarios para los fines descritos.</p>
+
+          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>7. Sus derechos</h3>
+          <p>Conforme a la Ley N° 21.719, usted tiene derecho a <strong>acceder, rectificar, cancelar y oponerse</strong> al tratamiento de sus datos (derechos ARCO), así como a revocar su consentimiento en cualquier momento. Para ejercer estos derechos, contáctenos en: <a href="mailto:bienestarysaludmental@uft.cl" style={{ color: '#3d2f7a' }}>bienestarysaludmental@uft.cl</a></p>
+        </div>
+
+        <button onClick={onClose} style={{
+          width: '100%', marginTop: 20, padding: 11, background: '#3d2f7a',
+          color: 'white', border: 'none', borderRadius: 10,
+          fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
+        }}>Cerrar</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── BANNER DE CRISIS ─────────────────────────────────────────────────────────
 function BannerCrisis() {
   const [visible, setVisible] = useState(true);
   if (!visible) return null;
   return (
-    <div style={{
-      background: '#fff7ed', borderBottom: '1.5px solid #fed7aa',
-      padding: '12px 24px',
-    }}>
+    <div style={{ background: '#fff7ed', borderBottom: '1.5px solid #fed7aa', padding: '12px 24px' }}>
       <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ fontSize: 13, color: '#92400e', lineHeight: 1.5 }}>
           <span style={{ fontWeight: 800 }}>🆘 ¿Estás en crisis?</span>
@@ -129,8 +184,10 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
   const [rut, setRut] = useState('');
   const [carrera, setCarrera] = useState('');
   const [correo, setCorreo] = useState('');
+  const [aceptaTerminos, setAceptaTerminos] = useState(false);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [cargando, setCargando] = useState(false);
+  const [verPolitica, setVerPolitica] = useState(false);
 
   async function handleReservar() {
     const e: Record<string, string> = {};
@@ -138,6 +195,7 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
     if (!validarRut(rut)) e.rut = 'RUT inválido';
     if (!carrera) e.carrera = 'Requerido';
     if (!correo.includes('@')) e.correo = 'Correo inválido';
+    if (!aceptaTerminos) e.terminos = 'Debes aceptar la política de privacidad para continuar';
     if (Object.keys(e).length) { setErrores(e); return; }
     setCargando(true);
     const { error } = await supabase.from('slots').update({
@@ -149,9 +207,9 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
     }).eq('id', slot.id);
     if (!error) {
       const psi = PSICOLOGAS.find(x => x.id === slot.psicologa_id);
-      fetch("/api/send-confirmation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      fetch('/api/send-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nombre: nombre.trim(),
           correo: correo.trim(),
@@ -166,86 +224,109 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000, padding: 16,
-    }}>
+    <>
+      {verPolitica && <PoliticaPrivacidad onClose={() => setVerPolitica(false)} />}
       <div style={{
-        background: 'white', borderRadius: 20, padding: 24,
-        width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto',
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 1000, padding: 16,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{
+          background: 'white', borderRadius: 20, padding: 24,
+          width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12, background: p.color, color: 'white',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13,
+              }}>{p.avatar}</div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: '#1a1040' }}>{p.nombre}</div>
+                <div style={{ fontSize: 13, color: '#7b6fa0' }}>{formatFecha(slot.fecha)} · {slot.hora}</div>
+              </div>
+            </div>
+            <button onClick={onClose} style={{
+              background: '#f5f3ff', border: 'none', borderRadius: 8,
+              width: 32, height: 32, fontSize: 18, cursor: 'pointer', color: '#7b6fa0',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>×</button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Nombre completo</label>
+              <input type="text" value={nombre} onChange={e => { setNombre(e.target.value); setErrores(p => ({...p, nombre: ''})); }}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
+                  border: `1.5px solid ${errores.nombre ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
+              {errores.nombre && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.nombre}</div>}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>RUT</label>
+                <input type="text" value={rut} placeholder="12.345.678-9"
+                  onChange={e => { setRut(e.target.value); setErrores(p => ({...p, rut: ''})); }}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
+                    border: `1.5px solid ${errores.rut ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
+                {errores.rut && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.rut}</div>}
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Correo institucional</label>
+                <input type="email" value={correo}
+                  onChange={e => { setCorreo(e.target.value); setErrores(p => ({...p, correo: ''})); }}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
+                    border: `1.5px solid ${errores.correo ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
+                {errores.correo && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.correo}</div>}
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Carrera</label>
+              <select value={carrera} onChange={e => { setCarrera(e.target.value); setErrores(p => ({...p, carrera: ''})); }}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
+                  border: `1.5px solid ${errores.carrera ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none', background: 'white' }}>
+                <option value="">Selecciona...</option>
+                {CARRERAS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {errores.carrera && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.carrera}</div>}
+            </div>
+
+            {/* Checkbox términos y condiciones */}
             <div style={{
-              width: 40, height: 40, borderRadius: 12, background: p.color, color: 'white',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13,
-            }}>{p.avatar}</div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 15, color: '#1a1040' }}>{p.nombre}</div>
-              <div style={{ fontSize: 13, color: '#7b6fa0' }}>{formatFecha(slot.fecha)} · {slot.hora}</div>
+              background: errores.terminos ? '#fff1f1' : '#f9f8ff',
+              border: `1.5px solid ${errores.terminos ? '#fca5a5' : '#ede9f8'}`,
+              borderRadius: 10, padding: '12px 14px',
+            }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={aceptaTerminos}
+                  onChange={e => { setAceptaTerminos(e.target.checked); setErrores(p => ({...p, terminos: ''})); }}
+                  style={{ marginTop: 2, width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
+                />
+                <span style={{ fontSize: 12, color: '#4a4560', lineHeight: 1.5 }}>
+                  He leído y acepto que mis datos personales (nombre, RUT, carrera y correo) sean tratados por la Unidad de Bienestar y Salud Mental UFT con el fin de gestionar mi atención, conforme a la{' '}
+                  <button
+                    onClick={e => { e.preventDefault(); setVerPolitica(true); }}
+                    style={{ background: 'none', border: 'none', padding: 0, color: '#3d2f7a', fontWeight: 700, fontSize: 12, cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}
+                  >Política de Privacidad</button>
+                  {' '}y la Ley N° 21.719 de Protección de Datos Personales.
+                </span>
+              </label>
+              {errores.terminos && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 6 }}>{errores.terminos}</div>}
             </div>
           </div>
-          <button onClick={onClose} style={{
-            background: '#f5f3ff', border: 'none', borderRadius: 8,
-            width: 32, height: 32, fontSize: 18, cursor: 'pointer', color: '#7b6fa0',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>×</button>
+
+          <button onClick={handleReservar} disabled={cargando} style={{
+            width: '100%', marginTop: 20, padding: 13,
+            background: cargando ? '#a89ec0' : '#3d2f7a', color: 'white',
+            border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 15,
+            cursor: cargando ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+          }}>{cargando ? 'Agendando...' : 'Confirmar reserva'}</button>
         </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Nombre completo</label>
-            <input type="text" value={nombre} onChange={e => { setNombre(e.target.value); setErrores(p => ({...p, nombre: ''})); }}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
-                border: `1.5px solid ${errores.nombre ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
-            {errores.nombre && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.nombre}</div>}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>RUT</label>
-              <input type="text" value={rut} placeholder="12.345.678-9"
-                onChange={e => { setRut(e.target.value); setErrores(p => ({...p, rut: ''})); }}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: `1.5px solid ${errores.rut ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
-              {errores.rut && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.rut}</div>}
-            </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Correo institucional</label>
-              <input type="email" value={correo}
-                onChange={e => { setCorreo(e.target.value); setErrores(p => ({...p, correo: ''})); }}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: `1.5px solid ${errores.correo ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none' }} />
-              {errores.correo && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.correo}</div>}
-            </div>
-          </div>
-
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Carrera</label>
-            <select value={carrera} onChange={e => { setCarrera(e.target.value); setErrores(p => ({...p, carrera: ''})); }}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
-                border: `1.5px solid ${errores.carrera ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, fontFamily: 'inherit', outline: 'none', background: 'white' }}>
-              <option value="">Selecciona...</option>
-              {CARRERAS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            {errores.carrera && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.carrera}</div>}
-          </div>
-
-          {/* Aviso de privacidad */}
-          <div style={{ fontSize: 11, color: '#a89ec0', background: '#f9f8ff', borderRadius: 8, padding: '8px 12px' }}>
-            📧 Tu correo será usado únicamente para enviarte la confirmación y recordatorio de tu hora.
-          </div>
-        </div>
-
-        <button onClick={handleReservar} disabled={cargando} style={{
-          width: '100%', marginTop: 20, padding: 13,
-          background: cargando ? '#a89ec0' : '#3d2f7a', color: 'white',
-          border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 15,
-          cursor: cargando ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-        }}>{cargando ? 'Agendando...' : 'Confirmar reserva'}</button>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -319,8 +400,7 @@ function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => v
             const p = PSICOLOGAS.find(x => x.id === s.psicologa_id)!;
             return (
               <div key={s.id} style={{
-                background: 'white', borderRadius: 14, padding: 16,
-                border: '1.5px solid #ede9f8',
+                background: 'white', borderRadius: 14, padding: 16, border: '1.5px solid #ede9f8',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -703,7 +783,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Banner de crisis — siempre visible */}
       <BannerCrisis />
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px 80px' }}>
