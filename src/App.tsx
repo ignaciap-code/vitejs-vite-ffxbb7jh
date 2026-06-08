@@ -214,8 +214,8 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
           nombre: nombre.trim(),
           correo: correo.trim(),
           psicologa: psi?.nombre,
-          fecha: formatFecha(slot.fecha),
-          hora: slot.hora,
+          fechaRaw: slot.fecha,
+          horaRaw: slot.hora,
         }),
       });
       onExito(slot);
@@ -445,6 +445,20 @@ function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => voi
       disponible: true, nombre_estudiante: null,
       rut_estudiante: null, carrera: null, correo_estudiante: null,
     }).eq('id', s.id);
+
+    // Notificar cancelación a psicóloga y bienestar
+    fetch('/api/send-cancellation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre: s.nombre_estudiante,
+        correo: s.correo_estudiante,
+        psicologaId: s.psicologa_id,
+        fechaRaw: s.fecha,
+        horaRaw: s.hora,
+      }),
+    });
+
     recargar();
     setCargando(false);
   }
