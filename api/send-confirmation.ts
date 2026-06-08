@@ -1,20 +1,20 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
- 
+
 const RESEND_API_KEY = 're_QH9SGpPs_BxvEBseFtCKDwJJUAUyDqTZx';
 const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
- 
+
 const CORREOS_PSICOLOGAS: Record<string, string> = {
   'Francesca Figueroa': 'ffigueroa@uft.cl',
   'Trinidad Montes': 'tmontes@uft.cl',
   'Andrea García': 'andreagarcia@uft.cl',
 };
- 
+
 function buildGoogleCalendarUrl(titulo: string, fecha: string, hora: string, descripcion: string) {
   // fecha formato: "lunes 9 de junio" — necesitamos YYYYMMDD
   // hora formato: "09:00"
   return null; // se construye con los datos raw en send-confirmation
 }
- 
+
 function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, descripcion: string, duracion = 60) {
   const [y, m, d] = fechaRaw.split('-').map(Number);
   const [h, min] = horaRaw.split(':').map(Number);
@@ -24,7 +24,7 @@ function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, de
   const endStr = `${end.getFullYear()}${pad(end.getMonth()+1)}${pad(end.getDate())}T${pad(end.getHours())}${pad(end.getMinutes())}00`;
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo)}&dates=${start}/${endStr}&details=${encodeURIComponent(descripcion)}`;
 }
- 
+
 function formatFecha(fecha: string) {
   const [y, m, d] = fecha.split('-');
   const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
@@ -32,7 +32,7 @@ function formatFecha(fecha: string) {
   const dt = new Date(Number(y), Number(m) - 1, Number(d));
   return `${dias[dt.getDay()]} ${d} de ${meses[Number(m) - 1]}`;
 }
- 
+
 async function enviarCorreo(to: string, subject: string, html: string) {
   return fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -48,16 +48,16 @@ async function enviarCorreo(to: string, subject: string, html: string) {
     }),
   });
 }
- 
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
- 
+
   const { nombre, correo, psicologa, fechaRaw, horaRaw } = req.body;
- 
+
   if (!nombre || !correo || !psicologa || !fechaRaw || !horaRaw) {
     return res.status(400).json({ error: 'Faltan datos' });
   }
- 
+
   const fechaFormateada = formatFecha(fechaRaw);
   const calendarLink = buildCalendarLink(
     `Sesión con ${nombre}`,
@@ -65,14 +65,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     horaRaw,
     `Estudiante: ${nombre}\nCorreo: ${correo}\nPsicóloga: ${psicologa}`,
   );
- 
+
   const calendarLinkEstudiante = buildCalendarLink(
     `Sesión Bienestar Estudiantil — ${psicologa}`,
     fechaRaw,
     horaRaw,
     `Sesión de atención psicológica en Bienestar Estudiantil UFT.\nPsicóloga: ${psicologa}\nContacto: ${CORREO_BIENESTAR}`,
   );
- 
+
   // 1. Correo al estudiante
   await enviarCorreo(correo,
     'Confirmación de hora — Bienestar y Salud Mental Estudiantil UFT',
@@ -93,7 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <p style="color:#a89ec0;font-size:12px;margin-top:24px;text-align:center;">Bienestar y Salud Mental UFT</p>
     </div>`
   );
- 
+
   // 2. Correo a bienestar
   await enviarCorreo(CORREO_BIENESTAR,
     `Nueva reserva — ${nombre} con ${psicologa}`,
@@ -109,7 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <p style="color:#a89ec0;font-size:12px;text-align:center;">Bienestar y Salud Mental UFT</p>
     </div>`
   );
- 
+
   // 3. Correo a la psicóloga
   const correoPsicologa = CORREOS_PSICOLOGAS[psicologa];
   if (correoPsicologa) {
@@ -128,6 +128,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       </div>`
     );
   }
- 
+
   return res.status(200).json({ ok: true });
 }
