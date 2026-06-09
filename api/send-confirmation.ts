@@ -1,5 +1,5 @@
 const RESEND_API_KEY = 're_QH9SGpPs_BxvEBseFtCKDwJJUAUyDqTZx';
-const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
+const CORREO_BIENESTAR = 'bienestaruft@gmail.com';
 
 const CORREOS_PSICOLOGAS: Record<string, string> = {
   'Francesca Figueroa': 'ffigueroa@uft.cl',
