@@ -5,7 +5,7 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1bWVzdGprdGdscm9kZm9hdHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MDYxMDIsImV4cCI6MjA5NjE4MjEwMn0.FFnWHGSwgSCVIBfRsN7bG_BW1C5tuwOtSTGLaXslor4'
 );
 
-const RESEND_API_KEY = 're_QH9SGpPs_BxvEBseFtCKDwJJUAUyDqTZx';
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const CORREO_BIENESTAR = 'bienestaruft@gmail.com';
 
 const PSICOLOGAS: Record<number, { nombre: string; correo: string }> = {
@@ -32,14 +32,19 @@ function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, de
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo)}&dates=${start}/${endStr}&details=${encodeURIComponent(descripcion)}`;
 }
 
-async function enviarCorreo(to: string, subject: string, html: string) {
-  return fetch('https://api.resend.com/emails', {
+async function enviarCorreo(to: string, toName: string, subject: string, html: string) {
+  return fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${RESEND_API_KEY}`,
+      'api-key': BREVO_API_KEY,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from: 'Bienestar y Salud Mental UFT <onboarding@resend.dev>', to, subject, html }),
+    body: JSON.stringify({
+      sender: { name: 'Bienestar y Salud Mental UFT', email: 'bienestaruft@gmail.com' },
+      to: [{ email: to, name: toName }],
+      subject,
+      htmlContent: html,
+    }),
   });
 }
 
@@ -69,15 +74,14 @@ export default async function handler(req: any, res: any) {
 
     const calendarLinkEstudiante = buildCalendarLink(
       `Sesión Bienestar Estudiantil — ${psiNombre}`, slot.fecha, slot.hora,
-      `Sesión de atención psicológica en Bienestar Estudiantil UFT.\nPsicóloga: ${psiNombre}\nContacto: ${CORREO_BIENESTAR}`,
+      `Sesión de atención psicológica en Bienestar Estudiantil UFT.\nPsicóloga: ${psiNombre}`,
     );
-
     const calendarLinkPsicologa = buildCalendarLink(
       `Sesión con ${slot.nombre_estudiante}`, slot.fecha, slot.hora,
       `Estudiante: ${slot.nombre_estudiante}\nCorreo: ${slot.correo_estudiante}\nCarrera: ${slot.carrera}`,
     );
 
-    await enviarCorreo(slot.correo_estudiante,
+    await enviarCorreo(slot.correo_estudiante, slot.nombre_estudiante,
       'Recordatorio — Tienes una hora mañana · Bienestar y Salud Mental UFT',
       `<div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9f8ff;border-radius:16px;">
         <div style="background:linear-gradient(135deg,#3d2f7a,#7C6FAF);border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
@@ -98,7 +102,7 @@ export default async function handler(req: any, res: any) {
     );
 
     if (psiData?.correo) {
-      await enviarCorreo(psiData.correo,
+      await enviarCorreo(psiData.correo, psiNombre,
         `Recordatorio — Sesión mañana con ${slot.nombre_estudiante} · ${slot.hora}`,
         `<div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9f8ff;border-radius:16px;">
           <h2 style="color:#1a1040;font-size:17px;margin-bottom:16px;">⏰ Recordatorio de sesión mañana</h2>
