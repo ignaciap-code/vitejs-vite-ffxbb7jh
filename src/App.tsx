@@ -218,17 +218,6 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
           horaRaw: slot.hora,
         }),
       });
-      fetch('/api/send-confirmation-bienestar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: nombre.trim(),
-          correo: correo.trim(),
-          psicologa: psi?.nombre,
-          fechaRaw: slot.fecha,
-          horaRaw: slot.hora,
-        }),
-      });
       onExito(slot);
     }
     setCargando(false);
