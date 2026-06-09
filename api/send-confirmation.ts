@@ -1,12 +1,12 @@
 const RESEND_API_KEY = 're_QH9SGpPs_BxvEBseFtCKDwJJUAUyDqTZx';
 const CORREO_BIENESTAR = 'bienestaruft@gmail.com';
-
+ 
 const CORREOS_PSICOLOGAS: Record<string, string> = {
   'Francesca Figueroa': 'ffigueroa@uft.cl',
   'Trinidad Montes': 'tmontes@uft.cl',
   'Andrea García': 'andreagarcia@uft.cl',
 };
-
+ 
 function formatFecha(fecha: string) {
   const [y, m, d] = fecha.split('-');
   const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
@@ -14,7 +14,7 @@ function formatFecha(fecha: string) {
   const dt = new Date(Number(y), Number(m) - 1, Number(d));
   return `${dias[dt.getDay()]} ${d} de ${meses[Number(m) - 1]}`;
 }
-
+ 
 function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, descripcion: string, duracion = 60) {
   const [y, m, d] = fechaRaw.split('-').map(Number);
   const [h, min] = horaRaw.split(':').map(Number);
@@ -24,7 +24,7 @@ function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, de
   const endStr = `${end.getFullYear()}${pad(end.getMonth()+1)}${pad(end.getDate())}T${pad(end.getHours())}${pad(end.getMinutes())}00`;
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo)}&dates=${start}/${endStr}&details=${encodeURIComponent(descripcion)}`;
 }
-
+ 
 async function enviarCorreo(to: string, subject: string, html: string) {
   return fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -38,16 +38,16 @@ async function enviarCorreo(to: string, subject: string, html: string) {
     }),
   });
 }
-
+ 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
+ 
   const { nombre, correo, psicologa, fechaRaw, horaRaw } = req.body;
-
+ 
   if (!nombre || !correo || !psicologa || !fechaRaw || !horaRaw) {
     return res.status(400).json({ error: 'Faltan datos' });
   }
-
+ 
   const fechaFormateada = formatFecha(fechaRaw);
   const calendarLinkPsicologa = buildCalendarLink(
     `Sesión con ${nombre}`, fechaRaw, horaRaw,
@@ -57,7 +57,7 @@ export default async function handler(req: any, res: any) {
     `Sesión Bienestar Estudiantil — ${psicologa}`, fechaRaw, horaRaw,
     `Sesión de atención psicológica en Bienestar Estudiantil UFT.\nPsicóloga: ${psicologa}\nContacto: ${CORREO_BIENESTAR}`,
   );
-
+ 
   await enviarCorreo(correo,
     'Confirmación de hora — Bienestar y Salud Mental Estudiantil UFT',
     `<div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9f8ff;border-radius:16px;">
@@ -77,7 +77,10 @@ export default async function handler(req: any, res: any) {
       <p style="color:#a89ec0;font-size:12px;margin-top:24px;text-align:center;">Bienestar y Salud Mental UFT</p>
     </div>`
   );
-
+ 
+  // Pequeño delay para evitar rate limiting de Resend
+  await new Promise(resolve => setTimeout(resolve, 500));
+ 
   await enviarCorreo(CORREO_BIENESTAR,
     `Nueva reserva — ${nombre} con ${psicologa}`,
     `<div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9f8ff;border-radius:16px;">
@@ -92,7 +95,7 @@ export default async function handler(req: any, res: any) {
       <p style="color:#a89ec0;font-size:12px;text-align:center;">Bienestar y Salud Mental UFT</p>
     </div>`
   );
-
+ 
   const correoPsicologa = CORREOS_PSICOLOGAS[psicologa];
   if (correoPsicologa) {
     await enviarCorreo(correoPsicologa,
@@ -110,6 +113,7 @@ export default async function handler(req: any, res: any) {
       </div>`
     );
   }
-
+ 
   return res.status(200).json({ ok: true });
 }
+ 
