@@ -1,4 +1,4 @@
-const RESEND_API_KEY = 're_QH9SGpPs_BxvEBseFtCKDwJJUAUyDqTZx';
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const CORREO_BIENESTAR = 'bienestaruft@gmail.com';
 
 const PSICOLOGAS: Record<number, { nombre: string; correo: string }> = {
@@ -25,14 +25,19 @@ function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, de
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo)}&dates=${start}/${endStr}&details=${encodeURIComponent(descripcion)}`;
 }
 
-async function enviarCorreo(to: string, subject: string, html: string) {
-  return fetch('https://api.resend.com/emails', {
+async function enviarCorreo(to: string, toName: string, subject: string, html: string) {
+  return fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${RESEND_API_KEY}`,
+      'api-key': BREVO_API_KEY,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from: 'Bienestar y Salud Mental UFT <onboarding@resend.dev>', to, subject, html }),
+    body: JSON.stringify({
+      sender: { name: 'Bienestar y Salud Mental UFT', email: 'bienestaruft@gmail.com' },
+      to: [{ email: to, name: toName }],
+      subject,
+      htmlContent: html,
+    }),
   });
 }
 
@@ -50,7 +55,7 @@ export default async function handler(req: any, res: any) {
 
   const calendarLink = buildCalendarLink(
     `[CANCELADA] Sesión con ${nombre}`, fechaRaw, horaRaw,
-    `Esta sesión fue cancelada por el/la estudiante.\nEstudiante: ${nombre}\nCorreo: ${correo || 'no disponible'}`,
+    `Esta sesión fue cancelada.\nEstudiante: ${nombre}\nCorreo: ${correo || 'no disponible'}`,
   );
 
   const html = `
@@ -64,15 +69,14 @@ export default async function handler(req: any, res: any) {
         <div><span style="color:#7b6fa0;font-size:13px;">Hora</span><br/><strong>${horaRaw}</strong></div>
       </div>
       <a href="${calendarLink}" style="display:block;text-align:center;padding:12px;background:#fff1f1;border:1.5px solid #fca5a5;border-radius:10px;font-weight:700;font-size:14px;color:#b91c1c;text-decoration:none;margin-bottom:16px;">📅 Registrar cancelación en Google Calendar</a>
-      <p style="color:#7b6fa0;font-size:12px;">El evento quedará marcado como <strong>[CANCELADA]</strong> en tu calendario.</p>
       <p style="color:#a89ec0;font-size:12px;margin-top:24px;text-align:center;">Bienestar y Salud Mental UFT</p>
     </div>
   `;
 
   if (psiData?.correo) {
-    await enviarCorreo(psiData.correo, `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
+    await enviarCorreo(psiData.correo, psiNombre, `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
   }
-  await enviarCorreo(CORREO_BIENESTAR, `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
+  await enviarCorreo(CORREO_BIENESTAR, 'Bienestar UFT', `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
 
   return res.status(200).json({ ok: true });
 }
