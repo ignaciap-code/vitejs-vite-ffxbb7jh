@@ -1,14 +1,12 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
- 
 const RESEND_API_KEY = 're_QH9SGpPs_BxvEBseFtCKDwJJUAUyDqTZx';
 const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
- 
+
 const PSICOLOGAS: Record<number, { nombre: string; correo: string }> = {
   1: { nombre: 'Francesca Figueroa', correo: 'ffigueroa@uft.cl' },
   2: { nombre: 'Trinidad Montes', correo: 'tmontes@uft.cl' },
   3: { nombre: 'Andrea García', correo: 'andreagarcia@uft.cl' },
 };
- 
+
 function formatFecha(fecha: string) {
   const [y, m, d] = fecha.split('-');
   const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
@@ -16,7 +14,7 @@ function formatFecha(fecha: string) {
   const dt = new Date(Number(y), Number(m) - 1, Number(d));
   return `${dias[dt.getDay()]} ${d} de ${meses[Number(m) - 1]}`;
 }
- 
+
 function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, descripcion: string, duracion = 60) {
   const [y, m, d] = fechaRaw.split('-').map(Number);
   const [h, min] = horaRaw.split(':').map(Number);
@@ -26,7 +24,7 @@ function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, de
   const endStr = `${end.getFullYear()}${pad(end.getMonth()+1)}${pad(end.getDate())}T${pad(end.getHours())}${pad(end.getMinutes())}00`;
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo)}&dates=${start}/${endStr}&details=${encodeURIComponent(descripcion)}`;
 }
- 
+
 async function enviarCorreo(to: string, subject: string, html: string) {
   return fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -34,33 +32,29 @@ async function enviarCorreo(to: string, subject: string, html: string) {
       'Authorization': `Bearer ${RESEND_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      from: 'Bienestar y Salud Mental UFT <onboarding@resend.dev>',
-      to, subject, html,
-    }),
+    body: JSON.stringify({ from: 'Bienestar y Salud Mental UFT <onboarding@resend.dev>', to, subject, html }),
   });
 }
- 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
- 
-  const { nombre, correo, psicologaId, fechaRaw, horaRaw } = req.body;
+
+export default async function handler(req: Request) {
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+
+  const { nombre, correo, psicologaId, fechaRaw, horaRaw } = await req.json();
   if (!nombre || !psicologaId || !fechaRaw || !horaRaw) {
-    return res.status(400).json({ error: 'Faltan datos' });
+    return new Response('Faltan datos', { status: 400 });
   }
- 
+
   const psiData = PSICOLOGAS[psicologaId];
   const psiNombre = psiData?.nombre || 'Psicóloga';
   const fechaFormateada = formatFecha(fechaRaw);
- 
-  // Link de Google Calendar con título "CANCELADA" para que quede registro
+
   const calendarLink = buildCalendarLink(
     `[CANCELADA] Sesión con ${nombre}`,
     fechaRaw, horaRaw,
     `Esta sesión fue cancelada por el/la estudiante.\nEstudiante: ${nombre}\nCorreo: ${correo || 'no disponible'}`,
   );
- 
-  const htmlBase = (destinatario: string) => `
+
+  const html = `
     <div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff5f5;border-radius:16px;">
       <h2 style="color:#b91c1c;font-size:17px;margin-bottom:16px;">❌ Hora cancelada</h2>
       <div style="background:white;border-radius:12px;padding:20px;border:1.5px solid #fca5a5;margin-bottom:16px;">
@@ -71,25 +65,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         <div><span style="color:#7b6fa0;font-size:13px;">Hora</span><br/><strong>${horaRaw}</strong></div>
       </div>
       <a href="${calendarLink}" style="display:block;text-align:center;padding:12px;background:#fff1f1;border:1.5px solid #fca5a5;border-radius:10px;font-weight:700;font-size:14px;color:#b91c1c;text-decoration:none;margin-bottom:16px;">📅 Registrar cancelación en Google Calendar</a>
-      <p style="color:#7b6fa0;font-size:12px;">El evento quedará marcado como <strong>[CANCELADA]</strong> en tu calendario para mantener el registro.</p>
+      <p style="color:#7b6fa0;font-size:12px;">El evento quedará marcado como <strong>[CANCELADA]</strong> en tu calendario.</p>
       <p style="color:#a89ec0;font-size:12px;margin-top:24px;text-align:center;">Bienestar y Salud Mental UFT</p>
     </div>
   `;
- 
-  // 1. Correo a la psicóloga
+
   if (psiData?.correo) {
     await enviarCorreo(psiData.correo,
-      `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`,
-      htmlBase(psiData.correo)
-    );
+      `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
   }
- 
-  // 2. Correo a bienestar
+
   await enviarCorreo(CORREO_BIENESTAR,
-    `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`,
-    htmlBase(CORREO_BIENESTAR)
-  );
- 
-  return res.status(200).json({ ok: true });
+    `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
+
+  return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }
- 
