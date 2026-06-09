@@ -6,7 +6,7 @@ const supabase = createClient(
 );
 
 const RESEND_API_KEY = 're_QH9SGpPs_BxvEBseFtCKDwJJUAUyDqTZx';
-const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
+const CORREO_BIENESTAR = 'bienestaruft@gmail.com';
 
 const PSICOLOGAS: Record<number, { nombre: string; correo: string }> = {
   1: { nombre: 'Francesca Figueroa', correo: 'ffigueroa@uft.cl' },
