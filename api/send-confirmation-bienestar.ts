@@ -1,0 +1,92 @@
+const RESEND_API_KEY = 're_QH9SGpPs_BxvEBseFtCKDwJJUAUyDqTZx';
+const CORREO_BIENESTAR = 'bienestaruft@gmail.com';
+
+const CORREOS_PSICOLOGAS: Record<string, string> = {
+  'Francesca Figueroa': 'ffigueroa@uft.cl',
+  'Trinidad Montes': 'tmontes@uft.cl',
+  'Andrea García': 'andreagarcia@uft.cl',
+};
+
+function formatFecha(fecha: string) {
+  const [y, m, d] = fecha.split('-');
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const dt = new Date(Number(y), Number(m) - 1, Number(d));
+  return `${dias[dt.getDay()]} ${d} de ${meses[Number(m) - 1]}`;
+}
+
+function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, descripcion: string, duracion = 60) {
+  const [y, m, d] = fechaRaw.split('-').map(Number);
+  const [h, min] = horaRaw.split(':').map(Number);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const start = `${y}${pad(m)}${pad(d)}T${pad(h)}${pad(min)}00`;
+  const end = new Date(y, m - 1, d, h, min + duracion);
+  const endStr = `${end.getFullYear()}${pad(end.getMonth()+1)}${pad(end.getDate())}T${pad(end.getHours())}${pad(end.getMinutes())}00`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo)}&dates=${start}/${endStr}&details=${encodeURIComponent(descripcion)}`;
+}
+
+async function enviarCorreo(to: string, subject: string, html: string) {
+  return fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: 'Bienestar y Salud Mental UFT <onboarding@resend.dev>',
+      to, subject, html,
+    }),
+  });
+}
+
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const { nombre, correo, psicologa, fechaRaw, horaRaw } = req.body;
+  if (!nombre || !psicologa || !fechaRaw || !horaRaw) {
+    return res.status(400).json({ error: 'Faltan datos' });
+  }
+
+  const fechaFormateada = formatFecha(fechaRaw);
+  const calendarLinkPsicologa = buildCalendarLink(
+    `Sesión con ${nombre}`, fechaRaw, horaRaw,
+    `Estudiante: ${nombre}\nCorreo: ${correo}\nPsicóloga: ${psicologa}`,
+  );
+
+  // Correo a bienestar
+  await enviarCorreo(CORREO_BIENESTAR,
+    `Nueva reserva — ${nombre} con ${psicologa}`,
+    `<div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9f8ff;border-radius:16px;">
+      <h2 style="color:#1a1040;font-size:17px;margin-bottom:16px;">🗓 Nueva reserva agendada</h2>
+      <div style="background:white;border-radius:12px;padding:20px;border:1.5px solid #ede9f8;margin-bottom:16px;">
+        <div style="margin-bottom:8px;"><span style="color:#7b6fa0;font-size:13px;">Estudiante</span><br/><strong>${nombre}</strong></div>
+        <div style="margin-bottom:8px;"><span style="color:#7b6fa0;font-size:13px;">Correo</span><br/><strong>${correo}</strong></div>
+        <div style="margin-bottom:8px;"><span style="color:#7b6fa0;font-size:13px;">Psicóloga</span><br/><strong>${psicologa}</strong></div>
+        <div style="margin-bottom:8px;"><span style="color:#7b6fa0;font-size:13px;">Fecha</span><br/><strong>${fechaFormateada}</strong></div>
+        <div><span style="color:#7b6fa0;font-size:13px;">Hora</span><br/><strong>${horaRaw}</strong></div>
+      </div>
+      <p style="color:#a89ec0;font-size:12px;text-align:center;">Bienestar y Salud Mental UFT</p>
+    </div>`
+  );
+
+  // Correo a la psicóloga
+  const correoPsicologa = CORREOS_PSICOLOGAS[psicologa];
+  if (correoPsicologa) {
+    await enviarCorreo(correoPsicologa,
+      `Nueva sesión agendada — ${nombre} · ${fechaFormateada} ${horaRaw}`,
+      `<div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9f8ff;border-radius:16px;">
+        <h2 style="color:#1a1040;font-size:17px;margin-bottom:16px;">🗓 Nueva sesión agendada</h2>
+        <div style="background:white;border-radius:12px;padding:20px;border:1.5px solid #ede9f8;margin-bottom:16px;">
+          <div style="margin-bottom:8px;"><span style="color:#7b6fa0;font-size:13px;">Estudiante</span><br/><strong>${nombre}</strong></div>
+          <div style="margin-bottom:8px;"><span style="color:#7b6fa0;font-size:13px;">Correo</span><br/><strong>${correo}</strong></div>
+          <div style="margin-bottom:8px;"><span style="color:#7b6fa0;font-size:13px;">Fecha</span><br/><strong>${fechaFormateada}</strong></div>
+          <div><span style="color:#7b6fa0;font-size:13px;">Hora</span><br/><strong>${horaRaw}</strong></div>
+        </div>
+        <a href="${calendarLinkPsicologa}" style="display:block;text-align:center;padding:12px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;font-weight:700;font-size:14px;color:#166534;text-decoration:none;margin-bottom:16px;">📅 Agregar a Google Calendar</a>
+        <p style="color:#a89ec0;font-size:12px;text-align:center;">Bienestar y Salud Mental UFT</p>
+      </div>`
+    );
+  }
+
+  return res.status(200).json({ ok: true });
+}
