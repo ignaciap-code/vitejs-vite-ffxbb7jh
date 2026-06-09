@@ -43,7 +43,7 @@ async function enviarCorreo(to: string, subject: string, html: string) {
   });
 }
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   const ahora = new Date();
   const manana = new Date(ahora);
   manana.setDate(ahora.getDate() + 1);
@@ -55,8 +55,8 @@ export default async function handler(req: Request) {
     .eq('disponible', false)
     .eq('realizada', false);
 
-  if (error) return new Response(JSON.stringify({ error }), { status: 500 });
-  if (!slots || slots.length === 0) return new Response(JSON.stringify({ ok: true, enviados: 0 }), { status: 200 });
+  if (error) return res.status(500).json({ error });
+  if (!slots || slots.length === 0) return res.status(200).json({ ok: true, enviados: 0 });
 
   let enviados = 0;
 
@@ -68,14 +68,12 @@ export default async function handler(req: Request) {
     const fechaFormateada = formatFecha(slot.fecha);
 
     const calendarLinkEstudiante = buildCalendarLink(
-      `Sesión Bienestar Estudiantil — ${psiNombre}`,
-      slot.fecha, slot.hora,
+      `Sesión Bienestar Estudiantil — ${psiNombre}`, slot.fecha, slot.hora,
       `Sesión de atención psicológica en Bienestar Estudiantil UFT.\nPsicóloga: ${psiNombre}\nContacto: ${CORREO_BIENESTAR}`,
     );
 
     const calendarLinkPsicologa = buildCalendarLink(
-      `Sesión con ${slot.nombre_estudiante}`,
-      slot.fecha, slot.hora,
+      `Sesión con ${slot.nombre_estudiante}`, slot.fecha, slot.hora,
       `Estudiante: ${slot.nombre_estudiante}\nCorreo: ${slot.correo_estudiante}\nCarrera: ${slot.carrera}`,
     );
 
@@ -94,7 +92,7 @@ export default async function handler(req: Request) {
           <div><span style="color:#7b6fa0;font-size:13px;">Hora</span><br/><strong>${slot.hora}</strong></div>
         </div>
         <a href="${calendarLinkEstudiante}" style="display:block;text-align:center;padding:12px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;font-weight:700;font-size:14px;color:#166534;text-decoration:none;margin-bottom:16px;">📅 Ver en Google Calendar</a>
-        <p style="color:#7b6fa0;font-size:13px;">Si necesitas cancelar, escríbenos a <a href="mailto:${CORREO_BIENESTAR}" style="color:#3d2f7a;">${CORREO_BIENESTAR}</a>.</p>
+        <p style="color:#7b6fa0;font-size:13px;">Si necesitas cancelar, escríbenos a <a href="mailto:bienestarysaludmental@uft.cl" style="color:#3d2f7a;">bienestarysaludmental@uft.cl</a>.</p>
         <p style="color:#a89ec0;font-size:12px;margin-top:24px;text-align:center;">Bienestar y Salud Mental UFT</p>
       </div>`
     );
@@ -120,5 +118,5 @@ export default async function handler(req: Request) {
     enviados++;
   }
 
-  return new Response(JSON.stringify({ ok: true, enviados }), { status: 200 });
+  return res.status(200).json({ ok: true, enviados });
 }
