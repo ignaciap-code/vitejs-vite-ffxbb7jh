@@ -36,12 +36,12 @@ async function enviarCorreo(to: string, subject: string, html: string) {
   });
 }
 
-export default async function handler(req: Request) {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { nombre, correo, psicologaId, fechaRaw, horaRaw } = await req.json();
+  const { nombre, correo, psicologaId, fechaRaw, horaRaw } = req.body;
   if (!nombre || !psicologaId || !fechaRaw || !horaRaw) {
-    return new Response('Faltan datos', { status: 400 });
+    return res.status(400).json({ error: 'Faltan datos' });
   }
 
   const psiData = PSICOLOGAS[psicologaId];
@@ -49,8 +49,7 @@ export default async function handler(req: Request) {
   const fechaFormateada = formatFecha(fechaRaw);
 
   const calendarLink = buildCalendarLink(
-    `[CANCELADA] Sesión con ${nombre}`,
-    fechaRaw, horaRaw,
+    `[CANCELADA] Sesión con ${nombre}`, fechaRaw, horaRaw,
     `Esta sesión fue cancelada por el/la estudiante.\nEstudiante: ${nombre}\nCorreo: ${correo || 'no disponible'}`,
   );
 
@@ -71,12 +70,9 @@ export default async function handler(req: Request) {
   `;
 
   if (psiData?.correo) {
-    await enviarCorreo(psiData.correo,
-      `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
+    await enviarCorreo(psiData.correo, `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
   }
+  await enviarCorreo(CORREO_BIENESTAR, `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
 
-  await enviarCorreo(CORREO_BIENESTAR,
-    `[CANCELADA] Sesión con ${nombre} · ${fechaFormateada} ${horaRaw}`, html);
-
-  return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  return res.status(200).json({ ok: true });
 }
