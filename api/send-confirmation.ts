@@ -39,28 +39,25 @@ async function enviarCorreo(to: string, subject: string, html: string) {
   });
 }
 
-export default async function handler(req: Request) {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { nombre, correo, psicologa, fechaRaw, horaRaw } = await req.json();
+  const { nombre, correo, psicologa, fechaRaw, horaRaw } = req.body;
 
   if (!nombre || !correo || !psicologa || !fechaRaw || !horaRaw) {
-    return new Response('Faltan datos', { status: 400 });
+    return res.status(400).json({ error: 'Faltan datos' });
   }
 
   const fechaFormateada = formatFecha(fechaRaw);
   const calendarLinkPsicologa = buildCalendarLink(
-    `Sesión con ${nombre}`,
-    fechaRaw, horaRaw,
+    `Sesión con ${nombre}`, fechaRaw, horaRaw,
     `Estudiante: ${nombre}\nCorreo: ${correo}\nPsicóloga: ${psicologa}`,
   );
   const calendarLinkEstudiante = buildCalendarLink(
-    `Sesión Bienestar Estudiantil — ${psicologa}`,
-    fechaRaw, horaRaw,
+    `Sesión Bienestar Estudiantil — ${psicologa}`, fechaRaw, horaRaw,
     `Sesión de atención psicológica en Bienestar Estudiantil UFT.\nPsicóloga: ${psicologa}\nContacto: ${CORREO_BIENESTAR}`,
   );
 
-  // 1. Correo al estudiante
   await enviarCorreo(correo,
     'Confirmación de hora — Bienestar y Salud Mental Estudiantil UFT',
     `<div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9f8ff;border-radius:16px;">
@@ -76,12 +73,11 @@ export default async function handler(req: Request) {
         <div><span style="color:#7b6fa0;font-size:13px;">Hora</span><br/><strong style="color:#1a1040;">${horaRaw}</strong></div>
       </div>
       <a href="${calendarLinkEstudiante}" style="display:block;text-align:center;padding:12px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;font-weight:700;font-size:14px;color:#166534;text-decoration:none;margin-bottom:16px;">📅 Agregar a Google Calendar</a>
-      <p style="color:#7b6fa0;font-size:13px;line-height:1.6;">Si necesitas cancelar con más de 24 horas de anticipación, puedes hacerlo desde la app. Si es con menos de 24 horas, escríbenos a <a href="mailto:${CORREO_BIENESTAR}" style="color:#3d2f7a;">${CORREO_BIENESTAR}</a>.</p>
+      <p style="color:#7b6fa0;font-size:13px;line-height:1.6;">Si necesitas cancelar con más de 24 horas de anticipación, puedes hacerlo desde la app. Si es con menos de 24 horas, escríbenos a <a href="mailto:bienestarysaludmental@uft.cl" style="color:#3d2f7a;">bienestarysaludmental@uft.cl</a>.</p>
       <p style="color:#a89ec0;font-size:12px;margin-top:24px;text-align:center;">Bienestar y Salud Mental UFT</p>
     </div>`
   );
 
-  // 2. Correo a bienestar
   await enviarCorreo(CORREO_BIENESTAR,
     `Nueva reserva — ${nombre} con ${psicologa}`,
     `<div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f9f8ff;border-radius:16px;">
@@ -97,7 +93,6 @@ export default async function handler(req: Request) {
     </div>`
   );
 
-  // 3. Correo a la psicóloga
   const correoPsicologa = CORREOS_PSICOLOGAS[psicologa];
   if (correoPsicologa) {
     await enviarCorreo(correoPsicologa,
@@ -116,5 +111,5 @@ export default async function handler(req: Request) {
     );
   }
 
-  return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  return res.status(200).json({ ok: true });
 }
