@@ -1,5 +1,3 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 const RESEND_API_KEY = 're_QH9SGpPs_BxvEBseFtCKDwJJUAUyDqTZx';
 const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
 
@@ -9,10 +7,12 @@ const CORREOS_PSICOLOGAS: Record<string, string> = {
   'Andrea García': 'andreagarcia@uft.cl',
 };
 
-function buildGoogleCalendarUrl(titulo: string, fecha: string, hora: string, descripcion: string) {
-  // fecha formato: "lunes 9 de junio" — necesitamos YYYYMMDD
-  // hora formato: "09:00"
-  return null; // se construye con los datos raw en send-confirmation
+function formatFecha(fecha: string) {
+  const [y, m, d] = fecha.split('-');
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const dt = new Date(Number(y), Number(m) - 1, Number(d));
+  return `${dias[dt.getDay()]} ${d} de ${meses[Number(m) - 1]}`;
 }
 
 function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, descripcion: string, duracion = 60) {
@@ -25,14 +25,6 @@ function buildCalendarLink(titulo: string, fechaRaw: string, horaRaw: string, de
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo)}&dates=${start}/${endStr}&details=${encodeURIComponent(descripcion)}`;
 }
 
-function formatFecha(fecha: string) {
-  const [y, m, d] = fecha.split('-');
-  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-  const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  const dt = new Date(Number(y), Number(m) - 1, Number(d));
-  return `${dias[dt.getDay()]} ${d} de ${meses[Number(m) - 1]}`;
-}
-
 async function enviarCorreo(to: string, subject: string, html: string) {
   return fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -42,34 +34,29 @@ async function enviarCorreo(to: string, subject: string, html: string) {
     },
     body: JSON.stringify({
       from: 'Bienestar y Salud Mental UFT <onboarding@resend.dev>',
-      to,
-      subject,
-      html,
+      to, subject, html,
     }),
   });
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+export default async function handler(req: Request) {
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
-  const { nombre, correo, psicologa, fechaRaw, horaRaw } = req.body;
+  const { nombre, correo, psicologa, fechaRaw, horaRaw } = await req.json();
 
   if (!nombre || !correo || !psicologa || !fechaRaw || !horaRaw) {
-    return res.status(400).json({ error: 'Faltan datos' });
+    return new Response('Faltan datos', { status: 400 });
   }
 
   const fechaFormateada = formatFecha(fechaRaw);
-  const calendarLink = buildCalendarLink(
+  const calendarLinkPsicologa = buildCalendarLink(
     `Sesión con ${nombre}`,
-    fechaRaw,
-    horaRaw,
+    fechaRaw, horaRaw,
     `Estudiante: ${nombre}\nCorreo: ${correo}\nPsicóloga: ${psicologa}`,
   );
-
   const calendarLinkEstudiante = buildCalendarLink(
     `Sesión Bienestar Estudiantil — ${psicologa}`,
-    fechaRaw,
-    horaRaw,
+    fechaRaw, horaRaw,
     `Sesión de atención psicológica en Bienestar Estudiantil UFT.\nPsicóloga: ${psicologa}\nContacto: ${CORREO_BIENESTAR}`,
   );
 
@@ -123,11 +110,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           <div style="margin-bottom:8px;"><span style="color:#7b6fa0;font-size:13px;">Fecha</span><br/><strong>${fechaFormateada}</strong></div>
           <div><span style="color:#7b6fa0;font-size:13px;">Hora</span><br/><strong>${horaRaw}</strong></div>
         </div>
-        <a href="${calendarLink}" style="display:block;text-align:center;padding:12px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;font-weight:700;font-size:14px;color:#166534;text-decoration:none;margin-bottom:16px;">📅 Agregar a Google Calendar</a>
+        <a href="${calendarLinkPsicologa}" style="display:block;text-align:center;padding:12px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;font-weight:700;font-size:14px;color:#166534;text-decoration:none;margin-bottom:16px;">📅 Agregar a Google Calendar</a>
         <p style="color:#a89ec0;font-size:12px;text-align:center;">Bienestar y Salud Mental UFT</p>
       </div>`
     );
   }
 
-  return res.status(200).json({ ok: true });
+  return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }
