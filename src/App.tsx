@@ -16,6 +16,76 @@ const CARRERAS = [
 const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
 const ADMIN_PASS = 'bienestar2024';
 
+// ─── HORARIO FIJO SEMANAL ──────────────────────────────────────────────────
+// dia: 1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes
+// Se autogeneran siempre 4 semanas hacia adelante (ver asegurarHorariosFijos).
+// Estos bloques quedan marcados como reserva_tipo:'fijo' y no se pueden
+// eliminar desde el panel (para evitar que se borren por error).
+const SEMANAS_VENTANA_FIJA = 4;
+
+const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
+  1: [ // Francesca Figueroa
+    { dia: 1, hora: '11:00' }, { dia: 1, hora: '12:00' },
+    { dia: 3, hora: '12:00' }, { dia: 3, hora: '13:00' },
+    { dia: 4, hora: '11:00' }, { dia: 4, hora: '12:00' },
+  ],
+  2: [ // Trinidad Montes
+    { dia: 1, hora: '12:00' }, { dia: 1, hora: '15:00' },
+    { dia: 3, hora: '11:00' },
+    { dia: 4, hora: '09:00' }, { dia: 4, hora: '10:00' },
+    { dia: 5, hora: '10:00' },
+  ],
+  3: [ // Andrea García
+    { dia: 2, hora: '12:00' }, { dia: 2, hora: '13:00' },
+    { dia: 4, hora: '12:00' }, { dia: 4, hora: '16:00' },
+    { dia: 5, hora: '11:00' }, { dia: 5, hora: '12:00' },
+  ],
+};
+
+function generarVentanaFija(semanas = SEMANAS_VENTANA_FIJA) {
+  const dias: { fecha: string; dow: number }[] = [];
+  const hoy = new Date();
+  const totalDias = semanas * 7;
+  for (let i = 0; i <= totalDias; i++) {
+    const f = new Date(hoy);
+    f.setDate(hoy.getDate() + i);
+    const dow = f.getDay();
+    if (dow === 0 || dow === 6) continue;
+    dias.push({ fecha: f.toISOString().split('T')[0], dow });
+  }
+  return dias;
+}
+
+// Revisa la ventana de próximas semanas y crea los horarios fijos que falten.
+// Es seguro llamarla varias veces: nunca duplica un bloque ya existente.
+async function asegurarHorariosFijos(slotsActuales: Slot[]) {
+  const ventana = generarVentanaFija();
+  const existentes = new Set(slotsActuales.map(s => `${s.psicologa_id}|${s.fecha}|${s.hora}`));
+  const nuevos: any[] = [];
+
+  for (const psiIdStr of Object.keys(PLANTILLA_FIJA)) {
+    const psiId = Number(psiIdStr);
+    for (const bloque of PLANTILLA_FIJA[psiId]) {
+      for (const { fecha, dow } of ventana) {
+        if (dow !== bloque.dia) continue;
+        const key = `${psiId}|${fecha}|${bloque.hora}`;
+        if (existentes.has(key)) continue;
+        existentes.add(key);
+        nuevos.push({
+          psicologa_id: psiId, fecha, hora: bloque.hora,
+          disponible: true, realizada: false, reserva_tipo: 'fijo',
+          nombre_estudiante: null, rut_estudiante: null, carrera: null, correo_estudiante: null,
+        });
+      }
+    }
+  }
+
+  if (nuevos.length > 0) {
+    await supabase.from('slots').insert(nuevos);
+  }
+  return nuevos.length;
+}
+
 const HORAS_DISPONIBLES = [
   '08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
   '12:00','12:30','13:00','14:00','14:30','15:00','15:30','16:00','16:30','17:00',
@@ -85,6 +155,7 @@ interface Slot {
   carrera: string | null;
   correo_estudiante: string | null;
   realizada: boolean;
+  reserva_tipo: string | null;
 }
 
 async function cargarSlots(): Promise<Slot[]> {
@@ -554,7 +625,7 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
     setCargando(true);
     await supabase.from('slots').insert({
       psicologa_id: nuevaPsi, fecha: nuevaFecha, hora: nuevaHora,
-      disponible: true, realizada: false,
+      disponible: true, realizada: false, reserva_tipo: 'manual',
       nombre_estudiante: null, rut_estudiante: null, carrera: null, correo_estudiante: null,
     });
     setMsgExito('✅ Horario agregado');
@@ -565,6 +636,12 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
   }
 
   async function eliminarHorario(id: string) {
+    const slot = slots.find(s => s.id === id);
+    if (slot?.reserva_tipo === 'fijo') {
+      setMsgExito('🔒 Este horario es fijo y no se puede eliminar');
+      setTimeout(() => setMsgExito(''), 3000);
+      return;
+    }
     setCargando(true);
     await supabase.from('slots').delete().eq('id', id);
     recargar();
@@ -711,12 +788,23 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
                   background: 'white', borderRadius: 12, padding: '12px 16px', border: '1.5px solid #ede9f8',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 }}>
-                  <div style={{ fontSize: 14, color: '#1a1040', fontWeight: 600 }}>{formatFecha(s.fecha)} · {s.hora}</div>
-                  <button onClick={() => eliminarHorario(s.id)} disabled={cargando} style={{
-                    padding: '6px 12px', background: '#fff1f1', border: '1.5px solid #fca5a5',
-                    borderRadius: 8, fontWeight: 700, fontSize: 12, color: '#b91c1c',
-                    cursor: 'pointer', fontFamily: 'inherit',
-                  }}>🗑 Eliminar</button>
+                  <div>
+                    <div style={{ fontSize: 14, color: '#1a1040', fontWeight: 600 }}>{formatFecha(s.fecha)} · {s.hora}</div>
+                    {s.reserva_tipo === 'fijo' && (
+                      <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>🔒 Horario fijo semanal</div>
+                    )}
+                  </div>
+                  {s.reserva_tipo === 'fijo' ? (
+                    <div style={{
+                      padding: '6px 12px', fontSize: 11, color: '#a89ec0', fontWeight: 700,
+                    }} title="Los horarios fijos no se pueden eliminar individualmente">🔒 Protegido</div>
+                  ) : (
+                    <button onClick={() => eliminarHorario(s.id)} disabled={cargando} style={{
+                      padding: '6px 12px', background: '#fff1f1', border: '1.5px solid #fca5a5',
+                      borderRadius: 8, fontWeight: 700, fontSize: 12, color: '#b91c1c',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}>🗑 Eliminar</button>
+                  )}
                 </div>
               ))}
             </div>
@@ -740,7 +828,13 @@ export default function App() {
     setSlots(data);
   }
 
-  useEffect(() => { recargar(); }, []);
+  useEffect(() => {
+    (async () => {
+      const data = await cargarSlots();
+      const agregados = await asegurarHorariosFijos(data);
+      setSlots(agregados > 0 ? await cargarSlots() : data);
+    })();
+  }, []);
 
   useEffect(() => {
     if (vista !== 'admin' || !adminAuth) return;
