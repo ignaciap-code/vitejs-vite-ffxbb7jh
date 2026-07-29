@@ -57,19 +57,37 @@ function generarVentanaFija(semanas = SEMANAS_VENTANA_FIJA) {
   return dias;
 }
 
-// Revisa la ventana de próximas semanas y crea los horarios fijos que falten.
-// Es seguro llamarla varias veces: nunca duplica un bloque ya existente.
-async function asegurarHorariosFijos(slotsActuales: Slot[]) {
+interface DiaBloqueado {
+  id: string;
+  psicologa_id: number;
+  fecha_inicio: string;
+  fecha_fin: string;
+  motivo: string | null;
+}
+
+async function cargarDiasBloqueados(): Promise<DiaBloqueado[]> {
+  const { data } = await supabase.from('dias_bloqueados').select('*').order('fecha_inicio');
+  return (data as DiaBloqueado[]) || [];
+}
+
+function fechaBloqueada(psiId: number, fecha: string, bloqueos: DiaBloqueado[]) {
+  return bloqueos.some(b => b.psicologa_id === psiId && fecha >= b.fecha_inicio && fecha <= b.fecha_fin);
+}
+
+// Revisa la ventana de próximas semanas y crea los horarios fijos que falten,
+// saltándose las fechas que estén dentro de un rango bloqueado (vacaciones, etc.)
+async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloqueado[] = []) {
   const ventana = generarVentanaFija();
   const existentes = new Set(slotsActuales.map(s => `${s.psicologa_id}|${s.fecha}|${s.hora}`));
   const nuevos: any[] = [];
 
   for (const psiIdStr of Object.keys(PLANTILLA_FIJA)) {
     const psiId = Number(psiIdStr);
-    for (const bloque of PLANTILLA_FIJA[psiId]) {
-      for (const { fecha, dow } of ventana) {
-        if (dow !== bloque.dia) continue;
-        const key = `${psiId}|${fecha}|${bloque.hora}`;
+      for (const bloque of PLANTILLA_FIJA[psiId]) {
+        for (const { fecha, dow } of ventana) {
+          if (dow !== bloque.dia) continue;
+          if (fechaBloqueada(psiId, fecha, bloqueos)) continue;
+          const key = `${psiId}|${fecha}|${bloque.hora}`;
         if (existentes.has(key)) continue;
         existentes.add(key);
         nuevos.push({
@@ -642,7 +660,7 @@ async function cargarBitacora(): Promise<SlotLog[]> {
 }
 
 // ─── PANEL ADMIN ──────────────────────────────────────────────────────────────
-function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }) {
+function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recargar: () => void; diasBloqueados: DiaBloqueado[] }) {
   const mostrarBitacora = typeof window !== 'undefined' && window.location.search.includes('bitacora');
   const [tab, setTab] = useState<'horarios' | 'reservas' | 'bitacora'>('reservas');
   const [psicologaFiltro, setPsicologaFiltro] = useState<number>(1);
@@ -651,6 +669,9 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
   const [nuevaHora, setNuevaHora] = useState('');
   const [nuevaPsi, setNuevaPsi] = useState<number>(1);
   const [msgExito, setMsgExito] = useState('');
+  const [bloqueoInicio, setBloqueoInicio] = useState('');
+  const [bloqueoFin, setBloqueoFin] = useState('');
+  const [bloqueoMotivo, setBloqueoMotivo] = useState('');
   const [bitacora, setBitacora] = useState<SlotLog[]>([]);
   const [bitacoraAuth, setBitacoraAuth] = useState(false);
   const [bitacoraPassInput, setBitacoraPassInput] = useState('');
@@ -671,6 +692,39 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
 
   const reservasActivas = slots.filter(s => s.psicologa_id === psicologaFiltro && !s.disponible && !s.realizada);
   const horariosDisponibles = slots.filter(s => s.psicologa_id === psicologaFiltro && s.disponible);
+
+  async function bloquearRango() {
+    if (!bloqueoInicio || !bloqueoFin) return;
+    setCargando(true);
+    const aEliminar = slots.filter(s =>
+      s.psicologa_id === psicologaFiltro && s.disponible &&
+      s.fecha >= bloqueoInicio && s.fecha <= bloqueoFin
+    );
+    for (const s of aEliminar) {
+      await registrarEliminacion(s);
+      await supabase.from('slots').delete().eq('id', s.id);
+    }
+    await supabase.from('dias_bloqueados').insert({
+      psicologa_id: psicologaFiltro, fecha_inicio: bloqueoInicio, fecha_fin: bloqueoFin,
+      motivo: bloqueoMotivo || null,
+    });
+    setMsgExito(`✅ Bloqueado del ${bloqueoInicio} al ${bloqueoFin} (${aEliminar.length} horarios liberados)`);
+    setTimeout(() => setMsgExito(''), 4000);
+    setBloqueoInicio(''); setBloqueoFin(''); setBloqueoMotivo('');
+    recargar();
+    setCargando(false);
+  }
+
+  async function desbloquear(id: string) {
+    setCargando(true);
+    await supabase.from('dias_bloqueados').delete().eq('id', id);
+    recargar();
+    setCargando(false);
+  }
+
+  const bloqueosPsicologa = diasBloqueados.filter(b => b.psicologa_id === psicologaFiltro);
+  const reservasEnRangoBloqueo = (b: DiaBloqueado) =>
+    slots.filter(s => s.psicologa_id === b.psicologa_id && !s.disponible && !s.realizada && s.fecha >= b.fecha_inicio && s.fecha <= b.fecha_fin);
 
   async function agregarHorario() {
     if (!nuevaFecha || !nuevaHora) return;
@@ -836,6 +890,68 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
 
       {tab === 'horarios' && (
         <>
+          <div style={{ background: '#fffbea', borderRadius: 14, padding: 16, border: '1.5px solid #fde68a', marginBottom: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1040', marginBottom: 4 }}>
+              🏖 Bloquear días ({PSICOLOGAS.find(p => p.id === psicologaFiltro)?.nombre})
+            </div>
+            <div style={{ fontSize: 12, color: '#92702a', marginBottom: 12 }}>
+              Para vacaciones o licencias: libera los horarios del rango (los que no estén reservados) y evita que se vuelvan a generar solos mientras dure.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.4fr', gap: 10, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Desde</label>
+                <input type="date" value={bloqueoInicio} onChange={e => setBloqueoInicio(e.target.value)} style={{
+                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
+                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
+                }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hasta</label>
+                <input type="date" value={bloqueoFin} onChange={e => setBloqueoFin(e.target.value)} style={{
+                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
+                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
+                }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Motivo (opcional)</label>
+                <input type="text" value={bloqueoMotivo} onChange={e => setBloqueoMotivo(e.target.value)} placeholder="Vacaciones"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
+                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }} />
+              </div>
+            </div>
+            <button onClick={bloquearRango} disabled={cargando || !bloqueoInicio || !bloqueoFin} style={{
+              width: '100%', padding: 11, background: !bloqueoInicio || !bloqueoFin ? '#f0e6c0' : '#92702a',
+              color: 'white', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14,
+              cursor: !bloqueoInicio || !bloqueoFin ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+            }}>Bloquear rango</button>
+
+            {bloqueosPsicologa.length > 0 && (
+              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {bloqueosPsicologa.map(b => {
+                  const reservasAfectadas = reservasEnRangoBloqueo(b);
+                  return (
+                    <div key={b.id} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1040' }}>{formatFecha(b.fecha_inicio)} → {formatFecha(b.fecha_fin)}</div>
+                        {b.motivo && <div style={{ fontSize: 12, color: '#7b6fa0' }}>{b.motivo}</div>}
+                        {reservasAfectadas.length > 0 && (
+                          <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 2 }}>
+                            ⚠️ {reservasAfectadas.length} reserva(s) ya confirmada(s) en este rango — revísalas en "Reservas activas", el bloqueo no las cancela solo.
+                          </div>
+                        )}
+                      </div>
+                      <button onClick={() => desbloquear(b.id)} disabled={cargando} style={{
+                        padding: '6px 12px', background: '#f0fdf4', border: '1.5px solid #86efac',
+                        borderRadius: 8, fontWeight: 700, fontSize: 12, color: '#166534',
+                        cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                      }}>Desbloquear</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <div style={{ background: 'white', borderRadius: 14, padding: 16, border: '1.5px solid #ede9f8', marginBottom: 20 }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1040', marginBottom: 12 }}>➕ Agregar nuevo horario</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -912,14 +1028,16 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
 // ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
 export default function App() {
   const [slots, setSlots] = useState<Slot[] | null>(null);
+  const [diasBloqueados, setDiasBloqueados] = useState<DiaBloqueado[]>([]);
   const [vista, setVista] = useState<'estudiante' | 'cancelar' | 'admin'>('estudiante');
   const [adminAuth, setAdminAuth] = useState(false);
   const [adminPass, setAdminPass] = useState('');
   const [adminError, setAdminError] = useState(false);
 
   async function recargar() {
-    const data = await cargarSlots();
-    const agregados = await asegurarHorariosFijos(data);
+    const [data, bloqueos] = await Promise.all([cargarSlots(), cargarDiasBloqueados()]);
+    setDiasBloqueados(bloqueos);
+    const agregados = await asegurarHorariosFijos(data, bloqueos);
     setSlots(agregados > 0 ? await cargarSlots() : data);
   }
 
@@ -999,7 +1117,7 @@ export default function App() {
             }}>Ingresar</button>
           </div>
         )}
-        {vista === 'admin' && adminAuth && <PanelAdmin slots={slots} recargar={recargar} />}
+        {vista === 'admin' && adminAuth && <PanelAdmin slots={slots} recargar={recargar} diasBloqueados={diasBloqueados} />}
       </div>
     </div>
   );
