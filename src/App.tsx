@@ -15,6 +15,7 @@ const CARRERAS = [
 
 const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
 const ADMIN_PASS = 'bienestar2024';
+const BITACORA_PASS = 'bitacora2024';
 
 // ─── HORARIO FIJO SEMANAL ──────────────────────────────────────────────────
 // dia: 1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes
@@ -651,10 +652,18 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
   const [nuevaPsi, setNuevaPsi] = useState<number>(1);
   const [msgExito, setMsgExito] = useState('');
   const [bitacora, setBitacora] = useState<SlotLog[]>([]);
+  const [bitacoraAuth, setBitacoraAuth] = useState(false);
+  const [bitacoraPassInput, setBitacoraPassInput] = useState('');
+  const [bitacoraError, setBitacoraError] = useState(false);
 
   useEffect(() => {
-    if (tab === 'bitacora') cargarBitacora().then(setBitacora);
-  }, [tab]);
+    if (tab === 'bitacora' && bitacoraAuth) cargarBitacora().then(setBitacora);
+  }, [tab, bitacoraAuth]);
+
+  function handleBitacoraLogin() {
+    if (bitacoraPassInput === BITACORA_PASS) { setBitacoraAuth(true); setBitacoraError(false); }
+    else setBitacoraError(true);
+  }
 
   const { inicio: inicioSemana, fin: finSemana } = getRangoSemanaActual();
   const conteoSemanal = (psiId: number) =>
@@ -745,7 +754,26 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
         })}
       </div>
 
-      {tab === 'bitacora' && (
+      {tab === 'bitacora' && !bitacoraAuth && (
+        <div style={{ maxWidth: 320, margin: '30px auto', textAlign: 'center' }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🔒</div>
+          <p style={{ color: '#7b6fa0', marginBottom: 16, fontSize: 13 }}>Contraseña de bitácora (solo Ignacia)</p>
+          <input type="password" value={bitacoraPassInput}
+            onChange={e => { setBitacoraPassInput(e.target.value); setBitacoraError(false); }}
+            onKeyDown={e => e.key === 'Enter' && handleBitacoraLogin()}
+            placeholder="Contraseña"
+            style={{ width: '100%', padding: '10px 14px', borderRadius: 10, boxSizing: 'border-box',
+              border: `1.5px solid ${bitacoraError ? '#e05a5a' : '#dcd7f0'}`,
+              fontSize: 13, marginBottom: 8, fontFamily: 'inherit', outline: 'none' }} />
+          {bitacoraError && <div style={{ fontSize: 12, color: '#e05a5a', marginBottom: 8 }}>Contraseña incorrecta</div>}
+          <button onClick={handleBitacoraLogin} style={{
+            width: '100%', padding: 10, background: '#3d2f7a', color: 'white',
+            border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+          }}>Ingresar</button>
+        </div>
+      )}
+
+      {tab === 'bitacora' && bitacoraAuth && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 12, color: '#a89ec0', marginBottom: 4 }}>Últimas eliminaciones (todas las psicólogas)</div>
           {bitacora.length === 0 ? (
