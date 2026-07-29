@@ -636,12 +636,6 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
   }
 
   async function eliminarHorario(id: string) {
-    const slot = slots.find(s => s.id === id);
-    if (slot?.reserva_tipo === 'fijo') {
-      setMsgExito('🔒 Este horario es fijo y no se puede eliminar');
-      setTimeout(() => setMsgExito(''), 3000);
-      return;
-    }
     setCargando(true);
     await supabase.from('slots').delete().eq('id', id);
     recargar();
@@ -791,20 +785,14 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
                   <div>
                     <div style={{ fontSize: 14, color: '#1a1040', fontWeight: 600 }}>{formatFecha(s.fecha)} · {s.hora}</div>
                     {s.reserva_tipo === 'fijo' && (
-                      <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>🔒 Horario fijo semanal</div>
+                      <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>🔁 Horario fijo — se vuelve a generar solo si se elimina</div>
                     )}
                   </div>
-                  {s.reserva_tipo === 'fijo' ? (
-                    <div style={{
-                      padding: '6px 12px', fontSize: 11, color: '#a89ec0', fontWeight: 700,
-                    }} title="Los horarios fijos no se pueden eliminar individualmente">🔒 Protegido</div>
-                  ) : (
-                    <button onClick={() => eliminarHorario(s.id)} disabled={cargando} style={{
-                      padding: '6px 12px', background: '#fff1f1', border: '1.5px solid #fca5a5',
-                      borderRadius: 8, fontWeight: 700, fontSize: 12, color: '#b91c1c',
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}>🗑 Eliminar</button>
-                  )}
+                  <button onClick={() => eliminarHorario(s.id)} disabled={cargando} style={{
+                    padding: '6px 12px', background: '#fff1f1', border: '1.5px solid #fca5a5',
+                    borderRadius: 8, fontWeight: 700, fontSize: 12, color: '#b91c1c',
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}>🗑 Eliminar</button>
                 </div>
               ))}
             </div>
@@ -825,16 +813,11 @@ export default function App() {
 
   async function recargar() {
     const data = await cargarSlots();
-    setSlots(data);
+    const agregados = await asegurarHorariosFijos(data);
+    setSlots(agregados > 0 ? await cargarSlots() : data);
   }
 
-  useEffect(() => {
-    (async () => {
-      const data = await cargarSlots();
-      const agregados = await asegurarHorariosFijos(data);
-      setSlots(agregados > 0 ? await cargarSlots() : data);
-    })();
-  }, []);
+  useEffect(() => { recargar(); }, []);
 
   useEffect(() => {
     if (vista !== 'admin' || !adminAuth) return;
