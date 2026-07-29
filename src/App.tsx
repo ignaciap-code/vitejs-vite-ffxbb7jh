@@ -605,15 +605,60 @@ function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => voi
   );
 }
 
+function getRangoSemanaActual() {
+  const hoy = new Date();
+  const dow = hoy.getDay(); // 0=domingo
+  const offsetLunes = dow === 0 ? -6 : 1 - dow;
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() + offsetLunes);
+  const viernes = new Date(lunes);
+  viernes.setDate(lunes.getDate() + 4);
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  return { inicio: fmt(lunes), fin: fmt(viernes) };
+}
+
+interface SlotLog {
+  id: string;
+  slot_id: string | null;
+  psicologa_id: number;
+  fecha: string;
+  hora: string;
+  reserva_tipo: string | null;
+  accion: string;
+  eliminado_en: string;
+}
+
+async function registrarEliminacion(slot: Slot) {
+  await supabase.from('slots_log').insert({
+    slot_id: slot.id, psicologa_id: slot.psicologa_id, fecha: slot.fecha,
+    hora: slot.hora, reserva_tipo: slot.reserva_tipo, accion: 'eliminado',
+  });
+}
+
+async function cargarBitacora(): Promise<SlotLog[]> {
+  const { data } = await supabase.from('slots_log').select('*').order('eliminado_en', { ascending: false }).limit(100);
+  return (data as SlotLog[]) || [];
+}
+
 // ─── PANEL ADMIN ──────────────────────────────────────────────────────────────
 function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }) {
-  const [tab, setTab] = useState<'horarios' | 'reservas'>('reservas');
+  const mostrarBitacora = typeof window !== 'undefined' && window.location.search.includes('bitacora');
+  const [tab, setTab] = useState<'horarios' | 'reservas' | 'bitacora'>('reservas');
   const [psicologaFiltro, setPsicologaFiltro] = useState<number>(1);
   const [cargando, setCargando] = useState(false);
   const [nuevaFecha, setNuevaFecha] = useState('');
   const [nuevaHora, setNuevaHora] = useState('');
   const [nuevaPsi, setNuevaPsi] = useState<number>(1);
   const [msgExito, setMsgExito] = useState('');
+  const [bitacora, setBitacora] = useState<SlotLog[]>([]);
+
+  useEffect(() => {
+    if (tab === 'bitacora') cargarBitacora().then(setBitacora);
+  }, [tab]);
+
+  const { inicio: inicioSemana, fin: finSemana } = getRangoSemanaActual();
+  const conteoSemanal = (psiId: number) =>
+    slots.filter(s => s.psicologa_id === psiId && s.fecha >= inicioSemana && s.fecha <= finSemana).length;
 
   const reservasActivas = slots.filter(s => s.psicologa_id === psicologaFiltro && !s.disponible && !s.realizada);
   const horariosDisponibles = slots.filter(s => s.psicologa_id === psicologaFiltro && s.disponible);
@@ -636,7 +681,9 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
   }
 
   async function eliminarHorario(id: string) {
+    const slot = slots.find(s => s.id === id);
     setCargando(true);
+    if (slot) await registrarEliminacion(slot);
     await supabase.from('slots').delete().eq('id', id);
     recargar();
     setCargando(false);
@@ -665,7 +712,7 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a1040', marginBottom: 4 }}>Panel de psicólogas</h2>
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid #ede9f8' }}>
-        {([['reservas', '📋 Reservas activas'], ['horarios', '🗓 Gestionar horarios']] as [typeof tab, string][]).map(([t, label]) => (
+        {([['reservas', '📋 Reservas activas'], ['horarios', '🗓 Gestionar horarios'], ...(mostrarBitacora ? [['bitacora', '🕵️ Bitácora']] : [])] as [typeof tab, string][]).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '10px 16px', border: 'none', background: 'none',
             fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
@@ -676,16 +723,47 @@ function PanelAdmin({ slots, recargar }: { slots: Slot[]; recargar: () => void }
         ))}
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-        {PSICOLOGAS.map(p => (
-          <button key={p.id} onClick={() => setPsicologaFiltro(p.id)} style={{
-            padding: '8px 14px', borderRadius: 8, border: '1.5px solid',
-            borderColor: psicologaFiltro === p.id ? p.color : '#dcd7f0',
-            background: psicologaFiltro === p.id ? p.color : 'white',
-            color: psicologaFiltro === p.id ? 'white' : '#7b6fa0',
-            fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-          }}>{p.nombre}</button>
-        ))}
+        {PSICOLOGAS.map(p => {
+          const conteo = conteoSemanal(p.id);
+          return (
+            <button key={p.id} onClick={() => setPsicologaFiltro(p.id)} style={{
+              padding: '8px 14px', borderRadius: 8, border: '1.5px solid',
+              borderColor: psicologaFiltro === p.id ? p.color : '#dcd7f0',
+              background: psicologaFiltro === p.id ? p.color : 'white',
+              color: psicologaFiltro === p.id ? 'white' : '#7b6fa0',
+              fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              {p.nombre}
+              <span style={{
+                fontSize: 11, fontWeight: 900, padding: '1px 7px', borderRadius: 20,
+                background: psicologaFiltro === p.id ? 'rgba(255,255,255,0.25)' : (conteo < 6 ? '#fff1f1' : '#f0fdf4'),
+                color: psicologaFiltro === p.id ? 'white' : (conteo < 6 ? '#b91c1c' : '#166534'),
+              }}>{conteo}/6</span>
+            </button>
+          );
+        })}
       </div>
+
+      {tab === 'bitacora' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 12, color: '#a89ec0', marginBottom: 4 }}>Últimas eliminaciones (todas las psicólogas)</div>
+          {bitacora.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#a89ec0' }}>Sin eliminaciones registradas</div>
+          ) : (
+            bitacora.map(log => (
+              <div key={log.id} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', border: '1.5px solid #ede9f8', fontSize: 13 }}>
+                <strong>{PSICOLOGAS.find(p => p.id === log.psicologa_id)?.nombre}</strong>
+                {' · '}{formatFecha(log.fecha)} · {log.hora}
+                {log.reserva_tipo === 'fijo' && <span style={{ color: '#b91c1c', fontWeight: 700 }}> (era fijo)</span>}
+                <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>
+                  Eliminado: {new Date(log.eliminado_en).toLocaleString('es-CL')}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {tab === 'reservas' && (
         <>
