@@ -641,16 +641,25 @@ interface SlotLog {
   slot_id: string | null;
   psicologa_id: number;
   fecha: string;
-  hora: string;
+  hora: string | null;
   reserva_tipo: string | null;
   accion: string;
   eliminado_en: string;
+  fecha_fin?: string | null;
+  motivo?: string | null;
 }
 
 async function registrarEliminacion(slot: Slot) {
   await supabase.from('slots_log').insert({
     slot_id: slot.id, psicologa_id: slot.psicologa_id, fecha: slot.fecha,
     hora: slot.hora, reserva_tipo: slot.reserva_tipo, accion: 'eliminado',
+  });
+}
+
+async function registrarBloqueo(psicologaId: number, fechaInicio: string, fechaFin: string, motivo: string, accion: 'bloqueo_creado' | 'bloqueo_eliminado') {
+  await supabase.from('slots_log').insert({
+    psicologa_id: psicologaId, fecha: fechaInicio, fecha_fin: fechaFin,
+    motivo: motivo || null, accion,
   });
 }
 
@@ -708,6 +717,7 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
       psicologa_id: psicologaFiltro, fecha_inicio: bloqueoInicio, fecha_fin: bloqueoFin,
       motivo: bloqueoMotivo || null,
     });
+    await registrarBloqueo(psicologaFiltro, bloqueoInicio, bloqueoFin, bloqueoMotivo, 'bloqueo_creado');
     setMsgExito(`✅ Bloqueado del ${bloqueoInicio} al ${bloqueoFin} (${aEliminar.length} horarios liberados)`);
     setTimeout(() => setMsgExito(''), 4000);
     setBloqueoInicio(''); setBloqueoFin(''); setBloqueoMotivo('');
@@ -717,6 +727,8 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
 
   async function desbloquear(id: string) {
     setCargando(true);
+    const b = diasBloqueados.find(x => x.id === id);
+    if (b) await registrarBloqueo(b.psicologa_id, b.fecha_inicio, b.fecha_fin, b.motivo || '', 'bloqueo_eliminado');
     await supabase.from('dias_bloqueados').delete().eq('id', id);
     recargar();
     setCargando(false);
@@ -829,17 +841,33 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
 
       {tab === 'bitacora' && bitacoraAuth && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 12, color: '#a89ec0', marginBottom: 4 }}>Últimas eliminaciones (todas las psicólogas)</div>
+          <div style={{ fontSize: 12, color: '#a89ec0', marginBottom: 4 }}>Últimos movimientos (todas las psicólogas)</div>
           {bitacora.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#a89ec0' }}>Sin eliminaciones registradas</div>
+            <div style={{ textAlign: 'center', padding: 40, color: '#a89ec0' }}>Sin movimientos registrados</div>
           ) : (
             bitacora.map(log => (
               <div key={log.id} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', border: '1.5px solid #ede9f8', fontSize: 13 }}>
                 <strong>{PSICOLOGAS.find(p => p.id === log.psicologa_id)?.nombre}</strong>
-                {' · '}{formatFecha(log.fecha)} · {log.hora}
-                {log.reserva_tipo === 'fijo' && <span style={{ color: '#b91c1c', fontWeight: 700 }}> (era fijo)</span>}
+                {log.accion === 'eliminado' && (
+                  <>
+                    {' · 🗑 eliminó '}{formatFecha(log.fecha)} · {log.hora}
+                    {log.reserva_tipo === 'fijo' && <span style={{ color: '#b91c1c', fontWeight: 700 }}> (era fijo)</span>}
+                  </>
+                )}
+                {log.accion === 'bloqueo_creado' && (
+                  <>
+                    {' · 🏖 bloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}
+                    {log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}
+                  </>
+                )}
+                {log.accion === 'bloqueo_eliminado' && (
+                  <>
+                    {' · ✅ desbloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}
+                    {log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}
+                  </>
+                )}
                 <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>
-                  Eliminado: {new Date(log.eliminado_en).toLocaleString('es-CL')}
+                  {new Date(log.eliminado_en).toLocaleString('es-CL')}
                 </div>
               </div>
             ))
