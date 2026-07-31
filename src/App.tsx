@@ -1103,10 +1103,11 @@ export default function App() {
     setSlots(agregados > 0 ? await cargarSlots() : data);
   }
 
-  useEffect(() => { recargarConAutosanado(); }, []);
+  useEffect(() => { recargar(); }, []);
 
   useEffect(() => {
     if (vista !== 'admin' || !adminAuth) return;
+    recargarConAutosanado();
     const id = setInterval(recargar, 10000);
     return () => clearInterval(id);
   }, [vista, adminAuth]);
