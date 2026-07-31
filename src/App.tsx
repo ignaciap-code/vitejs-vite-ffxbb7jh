@@ -103,32 +103,6 @@ async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloquea
   if (nuevos.length > 0) {
     await supabase.from('slots').insert(nuevos);
   }
-
-  // Limpieza: elimina horarios "fijos" futuros que ya NO están en la plantilla
-  // actual (porque se cambió el horario) y que no estén reservados ni completados.
-  const esperados = new Set<string>();
-  for (const psiIdStr of Object.keys(PLANTILLA_FIJA)) {
-    const psiId = Number(psiIdStr);
-    for (const bloque of PLANTILLA_FIJA[psiId]) {
-      for (const { fecha, dow } of ventana) {
-        if (dow !== bloque.dia) continue;
-        esperados.add(`${psiId}|${fecha}|${bloque.hora}`);
-      }
-    }
-  }
-  const obsoletos = slotsActuales.filter(s =>
-    s.reserva_tipo === 'fijo' && s.disponible && !s.realizada &&
-    ventana.some(v => v.fecha === s.fecha) &&
-    !esperados.has(`${s.psicologa_id}|${s.fecha}|${s.hora}`)
-  );
-  if (obsoletos.length > 0) {
-    await supabase.from('slots_log').insert(obsoletos.map(s => ({
-      slot_id: s.id, psicologa_id: s.psicologa_id, fecha: s.fecha,
-      hora: s.hora, reserva_tipo: s.reserva_tipo, accion: 'eliminado',
-    })));
-    await supabase.from('slots').delete().in('id', obsoletos.map(s => s.id));
-  }
-
   return nuevos.length;
 }
 
@@ -696,7 +670,7 @@ async function cargarBitacora(): Promise<SlotLog[]> {
 }
 
 // ─── PANEL ADMIN ──────────────────────────────────────────────────────────────
-function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: { slots: Slot[]; recargar: () => void; recargarConAutosanado: () => void; diasBloqueados: DiaBloqueado[] }) {
+function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recargar: () => void; diasBloqueados: DiaBloqueado[] }) {
   const mostrarBitacora = typeof window !== 'undefined' && window.location.search.includes('bitacora');
   const [tab, setTab] = useState<'horarios' | 'reservas' | 'bitacora'>('reservas');
   const [psicologaFiltro, setPsicologaFiltro] = useState<number>(1);
@@ -757,7 +731,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     const b = diasBloqueados.find(x => x.id === id);
     if (b) await registrarBloqueo(b.psicologa_id, b.fecha_inicio, b.fecha_fin, b.motivo || '', 'bloqueo_eliminado');
     await supabase.from('dias_bloqueados').delete().eq('id', id);
-    recargarConAutosanado();
+    recargar();
     setCargando(false);
   }
 
@@ -787,7 +761,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     setCargando(true);
     if (slot) await registrarEliminacion(slot);
     await supabase.from('slots').delete().eq('id', id);
-    recargarConAutosanado();
+    recargar();
     setCargando(false);
   }
 
@@ -1093,12 +1067,6 @@ export default function App() {
   async function recargar() {
     const [data, bloqueos] = await Promise.all([cargarSlots(), cargarDiasBloqueados()]);
     setDiasBloqueados(bloqueos);
-    setSlots(data);
-  }
-
-  async function recargarConAutosanado() {
-    const [data, bloqueos] = await Promise.all([cargarSlots(), cargarDiasBloqueados()]);
-    setDiasBloqueados(bloqueos);
     const agregados = await asegurarHorariosFijos(data, bloqueos);
     setSlots(agregados > 0 ? await cargarSlots() : data);
   }
@@ -1107,7 +1075,6 @@ export default function App() {
 
   useEffect(() => {
     if (vista !== 'admin' || !adminAuth) return;
-    recargarConAutosanado();
     const id = setInterval(recargar, 10000);
     return () => clearInterval(id);
   }, [vista, adminAuth]);
@@ -1180,7 +1147,7 @@ export default function App() {
             }}>Ingresar</button>
           </div>
         )}
-        {vista === 'admin' && adminAuth && <PanelAdmin slots={slots} recargar={recargar} recargarConAutosanado={recargarConAutosanado} diasBloqueados={diasBloqueados} />}
+        {vista === 'admin' && adminAuth && <PanelAdmin slots={slots} recargar={recargar} diasBloqueados={diasBloqueados} />}
       </div>
     </div>
   );
