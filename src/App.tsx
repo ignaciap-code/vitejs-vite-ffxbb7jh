@@ -37,9 +37,10 @@ const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
     { dia: 5, hora: '10:00' },
   ],
   3: [ // Andrea García
-    { dia: 2, hora: '12:00' }, { dia: 2, hora: '13:00' },
-    { dia: 4, hora: '12:00' }, { dia: 4, hora: '16:00' },
-    { dia: 5, hora: '11:00' }, { dia: 5, hora: '12:00' },
+    { dia: 1, hora: '15:00' },
+    { dia: 2, hora: '10:00' }, { dia: 2, hora: '13:00' },
+    { dia: 4, hora: '10:00' }, { dia: 4, hora: '12:00' },
+    { dia: 5, hora: '10:00' }, { dia: 5, hora: '12:00' },
   ],
 };
 
@@ -800,6 +801,7 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
         {PSICOLOGAS.map(p => {
           const conteo = conteoSemanal(p.id);
+          const objetivo = PLANTILLA_FIJA[p.id]?.length ?? 6;
           return (
             <button key={p.id} onClick={() => setPsicologaFiltro(p.id)} style={{
               padding: '8px 14px', borderRadius: 8, border: '1.5px solid',
@@ -812,9 +814,9 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
               {p.nombre}
               <span style={{
                 fontSize: 11, fontWeight: 900, padding: '1px 7px', borderRadius: 20,
-                background: psicologaFiltro === p.id ? 'rgba(255,255,255,0.25)' : (conteo < 6 ? '#fff1f1' : '#f0fdf4'),
-                color: psicologaFiltro === p.id ? 'white' : (conteo < 6 ? '#b91c1c' : '#166534'),
-              }}>{conteo}/6</span>
+                background: psicologaFiltro === p.id ? 'rgba(255,255,255,0.25)' : (conteo < objetivo ? '#fff1f1' : '#f0fdf4'),
+                color: psicologaFiltro === p.id ? 'white' : (conteo < objetivo ? '#b91c1c' : '#166534'),
+              }}>{conteo}/{objetivo}</span>
             </button>
           );
         })}
