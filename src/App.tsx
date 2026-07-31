@@ -53,7 +53,7 @@ function generarVentanaFija(semanas = SEMANAS_VENTANA_FIJA) {
     f.setDate(hoy.getDate() + i);
     const dow = f.getDay();
     if (dow === 0 || dow === 6) continue;
-    dias.push({ fecha: f.toISOString().split('T')[0], dow });
+    dias.push({ fecha: fmtLocal(f), dow });
   }
   return dias;
 }
@@ -140,6 +140,15 @@ function validarRut(rut: string) {
   return dv === dvReal;
 }
 
+// Formatea una fecha usando el día/mes/año LOCAL (evita el desfase que produce
+// toISOString(), que convierte a UTC y puede correr la fecha al día siguiente).
+function fmtLocal(d: Date) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function getFechasProximas(dias = 21) {
   const fechas: string[] = [];
   const hoy = new Date();
@@ -147,7 +156,7 @@ function getFechasProximas(dias = 21) {
     const f = new Date(hoy);
     f.setDate(hoy.getDate() + d);
     if (f.getDay() === 0 || f.getDay() === 6) continue;
-    fechas.push(f.toISOString().split('T')[0]);
+    fechas.push(fmtLocal(f));
   }
   return fechas;
 }
@@ -633,7 +642,7 @@ function getRangoSemanaActual() {
   lunes.setDate(hoy.getDate() + offsetLunes);
   const viernes = new Date(lunes);
   viernes.setDate(lunes.getDate() + 4);
-  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  const fmt = fmtLocal;
   return { inicio: fmt(lunes), fin: fmt(viernes) };
 }
 
