@@ -103,6 +103,29 @@ async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloquea
   if (nuevos.length > 0) {
     await supabase.from('slots').insert(nuevos);
   }
+
+  // Limpieza: elimina horarios "fijos" futuros que ya NO están en la plantilla
+  // actual (porque se cambió el horario) y que no estén reservados ni completados.
+  const esperados = new Set<string>();
+  for (const psiIdStr of Object.keys(PLANTILLA_FIJA)) {
+    const psiId = Number(psiIdStr);
+    for (const bloque of PLANTILLA_FIJA[psiId]) {
+      for (const { fecha, dow } of ventana) {
+        if (dow !== bloque.dia) continue;
+        esperados.add(`${psiId}|${fecha}|${bloque.hora}`);
+      }
+    }
+  }
+  const obsoletos = slotsActuales.filter(s =>
+    s.reserva_tipo === 'fijo' && s.disponible && !s.realizada &&
+    ventana.some(v => v.fecha === s.fecha) &&
+    !esperados.has(`${s.psicologa_id}|${s.fecha}|${s.hora}`)
+  );
+  for (const s of obsoletos) {
+    await registrarEliminacion(s);
+    await supabase.from('slots').delete().eq('id', s.id);
+  }
+
   return nuevos.length;
 }
 
