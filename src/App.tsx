@@ -107,6 +107,22 @@ async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloquea
   return nuevos.length;
 }
 
+// Elimina horarios que ya pasaron de fecha y nunca se reservaron, dejando
+// registro en la bitácora como "no agendada". No toca reservas (aunque
+// no se hayan marcado como realizadas) ni sesiones ya completadas.
+async function limpiarVencidosSinReserva(slotsActuales: Slot[]) {
+  const hoy = fmtLocal(new Date());
+  const vencidos = slotsActuales.filter(s => s.disponible && !s.realizada && s.fecha < hoy);
+  if (vencidos.length === 0) return 0;
+
+  await supabase.from('slots_log').insert(vencidos.map(s => ({
+    slot_id: s.id, psicologa_id: s.psicologa_id, fecha: s.fecha,
+    hora: s.hora, reserva_tipo: s.reserva_tipo, accion: 'no_agendada',
+  })));
+  await supabase.from('slots').delete().in('id', vencidos.map(s => s.id));
+  return vencidos.length;
+}
+
 const HORAS_DISPONIBLES = [
   '08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
   '12:00','12:30','13:00','14:00','14:30','15:00','15:30','16:00','16:30','17:00',
@@ -658,12 +674,16 @@ interface SlotLog {
   eliminado_en: string;
   fecha_fin?: string | null;
   motivo?: string | null;
+  nombre_estudiante?: string | null;
+  correo_estudiante?: string | null;
 }
 
 async function registrarEliminacion(slot: Slot) {
   await supabase.from('slots_log').insert({
     slot_id: slot.id, psicologa_id: slot.psicologa_id, fecha: slot.fecha,
     hora: slot.hora, reserva_tipo: slot.reserva_tipo, accion: 'eliminado',
+    nombre_estudiante: slot.nombre_estudiante || null,
+    correo_estudiante: slot.correo_estudiante || null,
   });
 }
 
@@ -909,6 +929,11 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
                   <>
                     {' · 🗑 eliminó '}{formatFecha(log.fecha)} · {log.hora}
                     {log.reserva_tipo === 'fijo' && <span style={{ color: '#b91c1c', fontWeight: 700 }}> (era fijo)</span>}
+                    {log.nombre_estudiante && (
+                      <div style={{ fontSize: 12, color: '#7b6fa0', marginTop: 2 }}>
+                        Estudiante: {log.nombre_estudiante}{log.correo_estudiante ? ` · ${log.correo_estudiante}` : ''}
+                      </div>
+                    )}
                   </>
                 )}
                 {log.accion === 'bloqueo_creado' && (
@@ -921,6 +946,11 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
                   <>
                     {' · ✅ desbloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}
                     {log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}
+                  </>
+                )}
+                {log.accion === 'no_agendada' && (
+                  <>
+                    {' · 📭 venció sin agendar '}{formatFecha(log.fecha)} · {log.hora}
                   </>
                 )}
                 <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>
@@ -1129,7 +1159,8 @@ export default function App() {
     const [data, bloqueos] = await Promise.all([cargarSlots(), cargarDiasBloqueados()]);
     setDiasBloqueados(bloqueos);
     const agregados = await asegurarHorariosFijos(data, bloqueos);
-    setSlots(agregados > 0 ? await cargarSlots() : data);
+    const vencidos = await limpiarVencidosSinReserva(data);
+    setSlots(agregados > 0 || vencidos > 0 ? await cargarSlots() : data);
   }
 
   useEffect(() => { recargar(); }, []);
