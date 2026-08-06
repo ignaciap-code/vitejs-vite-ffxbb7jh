@@ -712,6 +712,8 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
   const reservasActivas = slots.filter(s => s.psicologa_id === psicologaFiltro && !s.disponible && !s.realizada);
   const horariosDisponibles = slots.filter(s => s.psicologa_id === psicologaFiltro && s.disponible);
 
+  const [notificarEstudiantes, setNotificarEstudiantes] = useState(true);
+
   async function bloquearRango() {
     if (!bloqueoInicio || !bloqueoFin) return;
     setCargando(true);
@@ -723,13 +725,46 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
       await registrarEliminacion(s);
       await supabase.from('slots').delete().eq('id', s.id);
     }
+
+    const aCancelar = slots.filter(s =>
+      s.psicologa_id === psicologaFiltro && !s.disponible && !s.realizada &&
+      s.fecha >= bloqueoInicio && s.fecha <= bloqueoFin
+    );
+    let notificados = 0;
+    if (notificarEstudiantes) {
+      for (const s of aCancelar) {
+        if (s.correo_estudiante) {
+          try {
+            await fetch('/api/send-cancelacion-fuerza-mayor', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nombre: s.nombre_estudiante, correo: s.correo_estudiante,
+                psicologaId: s.psicologa_id, fechaRaw: s.fecha, horaRaw: s.hora,
+                motivo: bloqueoMotivo,
+              }),
+            });
+            notificados++;
+          } catch { /* si falla el correo, igual liberamos el horario */ }
+        }
+        await registrarEliminacion(s);
+        await supabase.from('slots').update({
+          disponible: true, nombre_estudiante: null, rut_estudiante: null,
+          carrera: null, correo_estudiante: null,
+        }).eq('id', s.id);
+      }
+    }
+
     await supabase.from('dias_bloqueados').insert({
       psicologa_id: psicologaFiltro, fecha_inicio: bloqueoInicio, fecha_fin: bloqueoFin,
       motivo: bloqueoMotivo || null,
     });
     await registrarBloqueo(psicologaFiltro, bloqueoInicio, bloqueoFin, bloqueoMotivo, 'bloqueo_creado');
-    setMsgExito(`✅ Bloqueado del ${bloqueoInicio} al ${bloqueoFin} (${aEliminar.length} horarios liberados)`);
-    setTimeout(() => setMsgExito(''), 4000);
+    setMsgExito(
+      `✅ Bloqueado del ${bloqueoInicio} al ${bloqueoFin} (${aEliminar.length} horarios liberados` +
+      (notificarEstudiantes && aCancelar.length > 0 ? `, ${notificados}/${aCancelar.length} estudiante(s) notificado(s))` : ')')
+    );
+    setTimeout(() => setMsgExito(''), 5000);
     setBloqueoInicio(''); setBloqueoFin(''); setBloqueoMotivo('');
     recargar();
     setCargando(false);
@@ -958,6 +993,12 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
                   border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }} />
               </div>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={notificarEstudiantes} onChange={e => setNotificarEstudiantes(e.target.checked)} />
+              <span style={{ fontSize: 12, color: '#92702a' }}>
+                Si hay estudiantes ya agendados en el rango, cancelar sus horas y avisarles por correo (motivo: el que escribas arriba)
+              </span>
+            </label>
             <button onClick={bloquearRango} disabled={cargando || !bloqueoInicio || !bloqueoFin} style={{
               width: '100%', padding: 11, background: !bloqueoInicio || !bloqueoFin ? '#f0e6c0' : '#92702a',
               color: 'white', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14,
