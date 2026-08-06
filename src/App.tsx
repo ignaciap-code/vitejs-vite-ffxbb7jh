@@ -732,11 +732,12 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
       s.fecha >= bloqueoInicio && s.fecha <= bloqueoFin
     );
     let notificados = 0;
+    const erroresCorreo: string[] = [];
     if (notificarEstudiantes) {
       for (const s of aCancelar) {
         if (s.correo_estudiante) {
           try {
-            await fetch('/api/send-cancelacion-fuerza-mayor', {
+            const resp = await fetch('/api/send-cancelacion-fuerza-mayor', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -745,8 +746,15 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
                 motivo: bloqueoMotivo,
               }),
             });
-            notificados++;
-          } catch { /* si falla el correo, igual liberamos el horario */ }
+            if (resp.ok) {
+              notificados++;
+            } else {
+              const cuerpo = await resp.json().catch(() => ({}));
+              erroresCorreo.push(`${s.correo_estudiante}: ${cuerpo.error || resp.status}`);
+            }
+          } catch (e: any) {
+            erroresCorreo.push(`${s.correo_estudiante}: ${e?.message || 'error de red'}`);
+          }
         }
         await registrarEliminacion(s);
         await supabase.from('slots').update({
@@ -761,11 +769,13 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
       motivo: bloqueoMotivo || null,
     });
     await registrarBloqueo(psicologaFiltro, bloqueoInicio, bloqueoFin, bloqueoMotivo, 'bloqueo_creado');
+    const hayErrores = erroresCorreo.length > 0;
     setMsgExito(
-      `✅ Bloqueado del ${bloqueoInicio} al ${bloqueoFin} (${aEliminar.length} horarios liberados` +
-      (notificarEstudiantes && aCancelar.length > 0 ? `, ${notificados}/${aCancelar.length} estudiante(s) notificado(s))` : ')')
+      `${hayErrores ? '⚠️' : '✅'} Bloqueado del ${bloqueoInicio} al ${bloqueoFin} (${aEliminar.length} horarios liberados` +
+      (notificarEstudiantes && aCancelar.length > 0 ? `, ${notificados}/${aCancelar.length} estudiante(s) notificado(s))` : ')') +
+      (hayErrores ? ` — Errores: ${erroresCorreo.join(' | ')}` : '')
     );
-    setTimeout(() => setMsgExito(''), 5000);
+    setTimeout(() => setMsgExito(''), hayErrores ? 15000 : 5000);
     setBloqueoInicio(''); setBloqueoFin(''); setBloqueoMotivo('');
     recargar();
     setCargando(false);

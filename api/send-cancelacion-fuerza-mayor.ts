@@ -18,7 +18,7 @@ function formatFecha(fecha: string) {
 }
 
 async function enviarCorreo(to: string, toName: string, subject: string, html: string) {
-  return fetch('https://api.brevo.com/v3/smtp/email', {
+  const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
       'api-key': BREVO_API_KEY,
@@ -31,6 +31,11 @@ async function enviarCorreo(to: string, toName: string, subject: string, html: s
       htmlContent: html,
     }),
   });
+  if (!resp.ok) {
+    const detalle = await resp.text().catch(() => '');
+    throw new Error(`Brevo respondió ${resp.status}: ${detalle}`);
+  }
+  return resp;
 }
 
 export default async function handler(req: any, res: any) {
@@ -65,7 +70,15 @@ export default async function handler(req: any, res: any) {
     </div>
   `;
 
-  await enviarCorreo(correo, nombre, `Tu hora del ${fechaFormateada} fue reprogramada — Bienestar UFT`, html);
+  if (!BREVO_API_KEY) {
+    return res.status(500).json({ error: 'BREVO_API_KEY no está configurada en Vercel' });
+  }
+
+  try {
+    await enviarCorreo(correo, nombre, `Tu hora del ${fechaFormateada} fue reprogramada — Bienestar UFT`, html);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Error enviando correo' });
+  }
 
   return res.status(200).json({ ok: true });
 }
