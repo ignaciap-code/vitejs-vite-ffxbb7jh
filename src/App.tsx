@@ -996,7 +996,7 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer' }}>
               <input type="checkbox" checked={notificarEstudiantes} onChange={e => setNotificarEstudiantes(e.target.checked)} />
               <span style={{ fontSize: 12, color: '#92702a' }}>
-                Si hay estudiantes ya agendados en el rango, cancelar sus horas y avisarles por correo (motivo: el que escribas arriba)
+                Si hay estudiantes ya agendados en el rango, cancelar sus horas y avisarles por correo (el correo dice "fuerza mayor", sin detalle — el motivo que escribas arriba queda solo interno, en la bitácora)
               </span>
             </label>
             <button onClick={bloquearRango} disabled={cargando || !bloqueoInicio || !bloqueoFin} style={{

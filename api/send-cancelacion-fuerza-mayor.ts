@@ -35,7 +35,7 @@ async function enviarCorreo(to: string, toName: string, subject: string, html: s
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { nombre, correo, psicologaId, fechaRaw, horaRaw, motivo } = req.body;
+  const { nombre, correo, psicologaId, fechaRaw, horaRaw } = req.body;
   if (!nombre || !correo || !psicologaId || !fechaRaw || !horaRaw) {
     return res.status(400).json({ error: 'Faltan datos' });
   }
@@ -43,7 +43,7 @@ export default async function handler(req: any, res: any) {
   const psiData = PSICOLOGAS[psicologaId];
   const psiNombre = psiData?.nombre || 'tu psicóloga';
   const fechaFormateada = formatFecha(fechaRaw);
-  const motivoTexto = motivo && String(motivo).trim() ? String(motivo).trim() : 'motivos de fuerza mayor';
+  const motivoTexto = 'motivos de fuerza mayor';
 
   const html = `
     <div style="font-family:'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#f8f6ff;border-radius:16px;">
