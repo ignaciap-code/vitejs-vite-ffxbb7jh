@@ -5,6 +5,7 @@ const PSICOLOGAS = [
   { id: 1, nombre: 'Francesca Figueroa', color: '#7C6FAF', avatar: 'FF' },
   { id: 2, nombre: 'Trinidad Montes', color: '#4A8FA3', avatar: 'TM' },
   { id: 3, nombre: 'Andrea García', color: '#A06B8A', avatar: 'AG' },
+  { id: 4, nombre: 'Antonia Escalona', color: '#B08858', avatar: 'AE' },
 ];
 
 const CARRERAS = [
