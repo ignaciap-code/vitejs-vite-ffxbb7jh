@@ -102,7 +102,12 @@ async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloquea
   }
 
   if (nuevos.length > 0) {
-    await supabase.from('slots').insert(nuevos);
+    // upsert + ignoreDuplicates: si otra sesión ya insertó el mismo
+    // horario (psicologa_id+fecha+hora) entre que leímos y que escribimos,
+    // el constraint UNIQUE hace que esa fila se ignore en vez de duplicarse.
+    await supabase
+      .from('slots')
+      .upsert(nuevos, { onConflict: 'psicologa_id,fecha,hora', ignoreDuplicates: true });
   }
   return nuevos.length;
 }
