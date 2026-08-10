@@ -705,7 +705,7 @@ async function cargarBitacora(): Promise<SlotLog[]> {
 }
 
 // ─── PANEL ADMIN ──────────────────────────────────────────────────────────────
-function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recargar: () => void; diasBloqueados: DiaBloqueado[] }) {
+function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: { slots: Slot[]; recargar: () => void; recargarConAutosanado: () => void; diasBloqueados: DiaBloqueado[] }) {
   const mostrarBitacora = typeof window !== 'undefined' && window.location.search.includes('bitacora');
   const [tab, setTab] = useState<'horarios' | 'reservas' | 'bitacora'>('reservas');
   const [psicologaFiltro, setPsicologaFiltro] = useState<number>(1);
@@ -802,7 +802,7 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
     );
     setTimeout(() => setMsgExito(''), hayErrores ? 15000 : 5000);
     setBloqueoInicio(''); setBloqueoFin(''); setBloqueoMotivo('');
-    recargar();
+    recargarConAutosanado();
     setCargando(false);
   }
 
@@ -811,7 +811,7 @@ function PanelAdmin({ slots, recargar, diasBloqueados }: { slots: Slot[]; recarg
     const b = diasBloqueados.find(x => x.id === id);
     if (b) await registrarBloqueo(b.psicologa_id, b.fecha_inicio, b.fecha_fin, b.motivo || '', 'bloqueo_eliminado');
     await supabase.from('dias_bloqueados').delete().eq('id', id);
-    recargar();
+    recargarConAutosanado();
     setCargando(false);
   }
 
@@ -1160,7 +1160,20 @@ export default function App() {
   const [adminPass, setAdminPass] = useState('');
   const [adminError, setAdminError] = useState(false);
 
+  // Recarga liviana: solo trae los datos tal cual están. La usan estudiantes
+  // al agendar/cancelar y el refresco periódico del panel admin.
   async function recargar() {
+    const [data, bloqueos] = await Promise.all([cargarSlots(), cargarDiasBloqueados()]);
+    setDiasBloqueados(bloqueos);
+    setSlots(data);
+  }
+
+  // Recarga con autosanado: además regenera horarios fijos faltantes y
+  // limpia vencidos. Corre SOLO desde el panel admin autenticado (al entrar
+  // y tras crear/eliminar un bloqueo), nunca en cada visita de un estudiante,
+  // para minimizar las ventanas de carrera que generan horarios duplicados
+  // o que se cuelan dentro de un rango recién bloqueado.
+  async function recargarConAutosanado() {
     const [data, bloqueos] = await Promise.all([cargarSlots(), cargarDiasBloqueados()]);
     setDiasBloqueados(bloqueos);
     const agregados = await asegurarHorariosFijos(data, bloqueos);
@@ -1172,6 +1185,7 @@ export default function App() {
 
   useEffect(() => {
     if (vista !== 'admin' || !adminAuth) return;
+    recargarConAutosanado();
     const id = setInterval(recargar, 10000);
     return () => clearInterval(id);
   }, [vista, adminAuth]);
@@ -1244,7 +1258,7 @@ export default function App() {
             }}>Ingresar</button>
           </div>
         )}
-        {vista === 'admin' && adminAuth && <PanelAdmin slots={slots} recargar={recargar} diasBloqueados={diasBloqueados} />}
+        {vista === 'admin' && adminAuth && <PanelAdmin slots={slots} recargar={recargar} recargarConAutosanado={recargarConAutosanado} diasBloqueados={diasBloqueados} />}
       </div>
     </div>
   );
