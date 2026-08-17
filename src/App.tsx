@@ -321,7 +321,7 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
     if (Object.keys(e).length) { setErrores(e); return; }
     setCargando(true);
     if (await rutEstaBloqueado(rut)) {
-      setErrores({ rut: 'No puedes agendar en línea. Debes solicitar tu hora presencialmente en la DAE.' });
+      setErrores({ rut: 'Tu RUT está bloqueado porque no avisaste y no llegaste a tu hora. Acércate a pedir una nueva hora.' });
       setCargando(false);
       return;
     }
