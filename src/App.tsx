@@ -320,6 +320,11 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
     if (!aceptaTerminos) e.terminos = 'Debes aceptar la política de privacidad para continuar';
     if (Object.keys(e).length) { setErrores(e); return; }
     setCargando(true);
+    if (await rutEstaBloqueado(rut)) {
+      setErrores({ rut: 'No puedes agendar en línea. Debes solicitar tu hora presencialmente en la DAE.' });
+      setCargando(false);
+      return;
+    }
     const { error } = await supabase.from('slots').update({
       disponible: false,
       nombre_estudiante: nombre.trim(),
@@ -412,6 +417,16 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
                 {CARRERAS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               {errores.carrera && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.carrera}</div>}
+            </div>
+
+            {/* Alerta de inasistencia */}
+            <div style={{
+              background: '#fff7ed', border: '1.5px solid #fdba74',
+              borderRadius: 10, padding: '10px 14px',
+            }}>
+              <span style={{ fontSize: 12, color: '#9a3412', lineHeight: 1.5 }}>
+                ⚠️ Si no llegas a tu hora y no avisas con anticipación, tu RUT quedará bloqueado para agendar en línea y deberás solicitar tu próxima hora presencialmente en la DAE.
+              </span>
             </div>
 
             {/* Checkbox términos y condiciones */}
@@ -681,6 +696,17 @@ interface SlotLog {
   motivo?: string | null;
   nombre_estudiante?: string | null;
   correo_estudiante?: string | null;
+  rut_estudiante?: string | null;
+}
+
+interface RutBloqueado {
+  rut: string;
+  nombre_estudiante: string | null;
+  motivo: string | null;
+  fecha_bloqueo: string;
+  slot_id_origen: string | null;
+  activo: boolean;
+  fecha_desbloqueo: string | null;
 }
 
 async function registrarEliminacion(slot: Slot) {
@@ -704,10 +730,52 @@ async function cargarBitacora(): Promise<SlotLog[]> {
   return (data as SlotLog[]) || [];
 }
 
+// ─── BLOQUEO DE RUT POR INASISTENCIA ───────────────────────────────────────────
+async function rutEstaBloqueado(rut: string): Promise<boolean> {
+  const rutLimpio = rut.replace(/[.\-]/g, '').toUpperCase();
+  const { data } = await supabase.from('ruts_bloqueados')
+    .select('rut').eq('rut', rutLimpio).eq('activo', true).maybeSingle();
+  return !!data;
+}
+
+async function marcarNoAsistio(slot: Slot) {
+  const rutLimpio = (slot.rut_estudiante || '').replace(/[.\-]/g, '').toUpperCase();
+  await supabase.from('slots_log').insert({
+    slot_id: slot.id, psicologa_id: slot.psicologa_id, fecha: slot.fecha,
+    hora: slot.hora, reserva_tipo: slot.reserva_tipo, accion: 'no_show',
+    nombre_estudiante: slot.nombre_estudiante || null,
+    correo_estudiante: slot.correo_estudiante || null,
+    rut_estudiante: slot.rut_estudiante || null,
+  });
+  await supabase.from('slots').update({ realizada: true }).eq('id', slot.id);
+  if (rutLimpio) {
+    await supabase.from('ruts_bloqueados').upsert({
+      rut: rutLimpio,
+      nombre_estudiante: slot.nombre_estudiante || null,
+      motivo: 'Inasistencia sin aviso',
+      fecha_bloqueo: new Date().toISOString(),
+      slot_id_origen: slot.id,
+      activo: true,
+      fecha_desbloqueo: null,
+    }, { onConflict: 'rut' });
+  }
+}
+
+async function cargarRutsBloqueados(): Promise<RutBloqueado[]> {
+  const { data } = await supabase.from('ruts_bloqueados').select('*').eq('activo', true).order('fecha_bloqueo', { ascending: false });
+  return (data as RutBloqueado[]) || [];
+}
+
+async function desbloquearRut(rut: string) {
+  await supabase.from('ruts_bloqueados').update({
+    activo: false, fecha_desbloqueo: new Date().toISOString(),
+  }).eq('rut', rut);
+}
+
 // ─── PANEL ADMIN ──────────────────────────────────────────────────────────────
 function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: { slots: Slot[]; recargar: () => void; recargarConAutosanado: () => void; diasBloqueados: DiaBloqueado[] }) {
   const mostrarBitacora = typeof window !== 'undefined' && window.location.search.includes('bitacora');
-  const [tab, setTab] = useState<'horarios' | 'reservas' | 'bitacora'>('reservas');
+  const [tab, setTab] = useState<'horarios' | 'reservas' | 'bitacora' | 'bloqueados'>('reservas');
   const [psicologaFiltro, setPsicologaFiltro] = useState<number>(1);
   const [cargando, setCargando] = useState(false);
   const [nuevaFecha, setNuevaFecha] = useState('');
@@ -721,10 +789,20 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   const [bitacoraAuth, setBitacoraAuth] = useState(false);
   const [bitacoraPassInput, setBitacoraPassInput] = useState('');
   const [bitacoraError, setBitacoraError] = useState(false);
+  const [rutsBloqueados, setRutsBloqueados] = useState<RutBloqueado[]>([]);
 
   useEffect(() => {
     if (tab === 'bitacora' && bitacoraAuth) cargarBitacora().then(setBitacora);
+    if (tab === 'bloqueados') cargarRutsBloqueados().then(setRutsBloqueados);
   }, [tab, bitacoraAuth]);
+
+  async function handleDesbloquear(rut: string) {
+    if (!confirm('¿Confirmas que el estudiante vino presencialmente y quieres desbloquear su RUT?')) return;
+    setCargando(true);
+    await desbloquearRut(rut);
+    setRutsBloqueados(await cargarRutsBloqueados());
+    setCargando(false);
+  }
 
   function handleBitacoraLogin() {
     if (bitacoraPassInput === BITACORA_PASS) { setBitacoraAuth(true); setBitacoraError(false); }
@@ -852,6 +930,14 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     setCargando(false);
   }
 
+  async function noAsistio(s: Slot) {
+    if (!confirm(`¿Confirmas que ${s.nombre_estudiante} no llegó y no avisó?\n\nSu RUT quedará bloqueado para agendar en línea hasta que se desbloquee manualmente.`)) return;
+    setCargando(true);
+    await marcarNoAsistio(s);
+    recargar();
+    setCargando(false);
+  }
+
   async function cancelarAdmin(id: string) {
     setCargando(true);
     await supabase.from('slots').update({
@@ -868,7 +954,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a1040', marginBottom: 4 }}>Panel de psicólogas</h2>
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid #ede9f8' }}>
-        {([['reservas', '📋 Reservas activas'], ['horarios', '🗓 Gestionar horarios'], ...(mostrarBitacora ? [['bitacora', '🕵️ Bitácora']] : [])] as [typeof tab, string][]).map(([t, label]) => (
+        {([['reservas', '📋 Reservas activas'], ['horarios', '🗓 Gestionar horarios'], ['bloqueados', '🚫 RUTs bloqueados'], ...(mostrarBitacora ? [['bitacora', '🕵️ Bitácora']] : [])] as [typeof tab, string][]).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '10px 16px', border: 'none', background: 'none',
             fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
@@ -967,6 +1053,32 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
         </div>
       )}
 
+      {tab === 'bloqueados' && (
+        <div>
+          <div style={{ fontSize: 12, color: '#a89ec0', marginBottom: 12 }}>
+            Estudiantes que no llegaron y no avisaron. No pueden agendar en línea hasta que se desbloqueen (ej. cuando vengan presencialmente a la DAE).
+          </div>
+          {rutsBloqueados.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#a89ec0' }}>No hay RUTs bloqueados</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {rutsBloqueados.map(r => (
+                <div key={r.rut} style={{ background: 'white', borderRadius: 14, padding: 16, border: '1.5px solid #fdba74' }}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1040', marginBottom: 4 }}>{r.nombre_estudiante || '(sin nombre)'}</div>
+                  <div style={{ fontSize: 13, color: '#7b6fa0', marginBottom: 2 }}>RUT: {r.rut}</div>
+                  <div style={{ fontSize: 13, color: '#7b6fa0', marginBottom: 2 }}>Motivo: {r.motivo}</div>
+                  <div style={{ fontSize: 12, color: '#a89ec0', marginBottom: 12 }}>Bloqueado: {new Date(r.fecha_bloqueo).toLocaleString('es-CL')}</div>
+                  <button onClick={() => handleDesbloquear(r.rut)} disabled={cargando} style={{
+                    width: '100%', padding: '9px', background: '#f0fdf4', border: '1.5px solid #86efac',
+                    borderRadius: 9, fontWeight: 700, fontSize: 12, color: '#166534', cursor: 'pointer', fontFamily: 'inherit',
+                  }}>✓ Desbloquear (vino presencialmente)</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {tab === 'reservas' && (
         <>
           {reservasActivas.length === 0 ? (
@@ -1001,6 +1113,10 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
                       borderRadius: 9, fontWeight: 700, fontSize: 12, color: '#b91c1c', cursor: 'pointer', fontFamily: 'inherit',
                     }}>🗑 Cancelar reserva</button>
                   </div>
+                  <button onClick={() => noAsistio(s)} disabled={cargando} style={{
+                    width: '100%', marginTop: 8, padding: '9px', background: '#fff7ed', border: '1.5px solid #fdba74',
+                    borderRadius: 9, fontWeight: 700, fontSize: 12, color: '#9a3412', cursor: 'pointer', fontFamily: 'inherit',
+                  }}>❌ No llegó / no avisó (bloquea RUT)</button>
                 </div>
               ))}
             </div>
