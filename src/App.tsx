@@ -66,6 +66,7 @@ interface DiaBloqueado {
   fecha_fin: string;
   motivo: string | null;
   hora?: string | null;
+  hora_hasta?: string | null;
 }
 
 async function cargarDiasBloqueados(): Promise<DiaBloqueado[]> {
@@ -73,12 +74,19 @@ async function cargarDiasBloqueados(): Promise<DiaBloqueado[]> {
   return (data as DiaBloqueado[]) || [];
 }
 
-// Si el bloqueo tiene "hora", solo tapa ese bloque puntual (ej. un taller);
-// si no tiene hora, tapa el día completo (vacaciones, licencias, etc.)
+// Sin "hora": tapa el día completo (vacaciones, licencias).
+// Con "hora" y sin "hora_hasta": tapa solo esa hora puntual (ej. un taller).
+// Con "hora" y "hora_hasta": tapa todo el tramo entre ambas.
+function horaEnRangoBloqueo(hora: string, desde?: string | null, hasta?: string | null) {
+  if (!desde) return true;
+  if (!hasta) return hora === desde;
+  return hora >= desde && hora <= hasta;
+}
+
 function horaBloqueada(psiId: number, fecha: string, hora: string, bloqueos: DiaBloqueado[]) {
   return bloqueos.some(b =>
     b.psicologa_id === psiId && fecha >= b.fecha_inicio && fecha <= b.fecha_fin &&
-    (!b.hora || b.hora === hora)
+    horaEnRangoBloqueo(hora, b.hora, b.hora_hasta)
   );
 }
 
@@ -703,6 +711,7 @@ interface SlotLog {
   nombre_estudiante?: string | null;
   correo_estudiante?: string | null;
   rut_estudiante?: string | null;
+  hora_hasta?: string | null;
 }
 
 interface RutBloqueado {
@@ -724,10 +733,10 @@ async function registrarEliminacion(slot: Slot) {
   });
 }
 
-async function registrarBloqueo(psicologaId: number, fechaInicio: string, fechaFin: string, motivo: string, accion: 'bloqueo_creado' | 'bloqueo_eliminado', hora?: string) {
+async function registrarBloqueo(psicologaId: number, fechaInicio: string, fechaFin: string, motivo: string, accion: 'bloqueo_creado' | 'bloqueo_eliminado', hora?: string, horaHasta?: string) {
   await supabase.from('slots_log').insert({
     psicologa_id: psicologaId, fecha: fechaInicio, fecha_fin: fechaFin,
-    motivo: motivo || null, accion, hora: hora || null,
+    motivo: motivo || null, accion, hora: hora || null, hora_hasta: horaHasta || null,
   });
 }
 
@@ -791,7 +800,8 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   const [bloqueoInicio, setBloqueoInicio] = useState('');
   const [bloqueoFin, setBloqueoFin] = useState('');
   const [bloqueoMotivo, setBloqueoMotivo] = useState('');
-  const [bloqueoHora, setBloqueoHora] = useState('');
+  const [bloqueoHoraDesde, setBloqueoHoraDesde] = useState('');
+  const [bloqueoHoraHasta, setBloqueoHoraHasta] = useState('');
   const [bitacora, setBitacora] = useState<SlotLog[]>([]);
   const [bitacoraAuth, setBitacoraAuth] = useState(false);
   const [bitacoraPassInput, setBitacoraPassInput] = useState('');
@@ -831,7 +841,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     const aEliminar = slots.filter(s =>
       s.psicologa_id === psicologaFiltro && s.disponible &&
       s.fecha >= bloqueoInicio && s.fecha <= bloqueoFin &&
-      (!bloqueoHora || s.hora === bloqueoHora)
+      horaEnRangoBloqueo(s.hora, bloqueoHoraDesde, bloqueoHoraHasta)
     );
     for (const s of aEliminar) {
       await registrarEliminacion(s);
@@ -841,7 +851,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     const aCancelar = slots.filter(s =>
       s.psicologa_id === psicologaFiltro && !s.disponible && !s.realizada &&
       s.fecha >= bloqueoInicio && s.fecha <= bloqueoFin &&
-      (!bloqueoHora || s.hora === bloqueoHora)
+      horaEnRangoBloqueo(s.hora, bloqueoHoraDesde, bloqueoHoraHasta)
     );
     let notificados = 0;
     const erroresCorreo: string[] = [];
@@ -878,19 +888,20 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
 
     await supabase.from('dias_bloqueados').insert({
       psicologa_id: psicologaFiltro, fecha_inicio: bloqueoInicio, fecha_fin: bloqueoFin,
-      motivo: bloqueoMotivo || null, hora: bloqueoHora || null,
+      motivo: bloqueoMotivo || null, hora: bloqueoHoraDesde || null, hora_hasta: bloqueoHoraHasta || null,
     });
-    await registrarBloqueo(psicologaFiltro, bloqueoInicio, bloqueoFin, bloqueoMotivo, 'bloqueo_creado', bloqueoHora);
+    await registrarBloqueo(psicologaFiltro, bloqueoInicio, bloqueoFin, bloqueoMotivo, 'bloqueo_creado', bloqueoHoraDesde, bloqueoHoraHasta);
     const hayErrores = erroresCorreo.length > 0;
+    const etiquetaHora = bloqueoHoraHasta ? `de ${bloqueoHoraDesde} a ${bloqueoHoraHasta}` : bloqueoHoraDesde ? `solo ${bloqueoHoraDesde}` : '';
     setMsgExito(
       `${hayErrores ? '⚠️' : '✅'} Bloqueado del ${bloqueoInicio} al ${bloqueoFin}` +
-      (bloqueoHora ? ` (solo ${bloqueoHora})` : '') +
+      (etiquetaHora ? ` (${etiquetaHora})` : '') +
       ` (${aEliminar.length} horarios liberados` +
       (notificarEstudiantes && aCancelar.length > 0 ? `, ${notificados}/${aCancelar.length} estudiante(s) notificado(s))` : ')') +
       (hayErrores ? ` — Errores: ${erroresCorreo.join(' | ')}` : '')
     );
     setTimeout(() => setMsgExito(''), hayErrores ? 15000 : 5000);
-    setBloqueoInicio(''); setBloqueoFin(''); setBloqueoMotivo(''); setBloqueoHora('');
+    setBloqueoInicio(''); setBloqueoFin(''); setBloqueoMotivo(''); setBloqueoHoraDesde(''); setBloqueoHoraHasta('');
     recargarConAutosanado();
     setCargando(false);
   }
@@ -898,7 +909,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   async function desbloquear(id: string) {
     setCargando(true);
     const b = diasBloqueados.find(x => x.id === id);
-    if (b) await registrarBloqueo(b.psicologa_id, b.fecha_inicio, b.fecha_fin, b.motivo || '', 'bloqueo_eliminado', b.hora || undefined);
+    if (b) await registrarBloqueo(b.psicologa_id, b.fecha_inicio, b.fecha_fin, b.motivo || '', 'bloqueo_eliminado', b.hora || undefined, b.hora_hasta || undefined);
     await supabase.from('dias_bloqueados').delete().eq('id', id);
     recargarConAutosanado();
     setCargando(false);
@@ -907,7 +918,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   const bloqueosPsicologa = diasBloqueados.filter(b => b.psicologa_id === psicologaFiltro);
   const reservasEnRangoBloqueo = (b: DiaBloqueado) =>
     slots.filter(s => s.psicologa_id === b.psicologa_id && !s.disponible && !s.realizada &&
-      s.fecha >= b.fecha_inicio && s.fecha <= b.fecha_fin && (!b.hora || s.hora === b.hora));
+      s.fecha >= b.fecha_inicio && s.fecha <= b.fecha_fin && horaEnRangoBloqueo(s.hora, b.hora, b.hora_hasta));
 
   async function agregarHorario() {
     if (!nuevaFecha || !nuevaHora) return;
@@ -1042,14 +1053,14 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
                 {log.accion === 'bloqueo_creado' && (
                   <>
                     {' · 🏖 bloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}
-                    {log.hora && <span style={{ color: '#92702a' }}> (solo {log.hora})</span>}
+                    {log.hora && <span style={{ color: '#92702a' }}> ({log.hora_hasta ? `de ${log.hora} a ${log.hora_hasta}` : `solo ${log.hora}`})</span>}
                     {log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}
                   </>
                 )}
                 {log.accion === 'bloqueo_eliminado' && (
                   <>
                     {' · ✅ desbloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}
-                    {log.hora && <span style={{ color: '#92702a' }}> (solo {log.hora})</span>}
+                    {log.hora && <span style={{ color: '#92702a' }}> ({log.hora_hasta ? `de ${log.hora} a ${log.hora_hasta}` : `solo ${log.hora}`})</span>}
                     {log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}
                   </>
                 )}
@@ -1145,30 +1156,40 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
               🏖 Bloquear días ({PSICOLOGAS.find(p => p.id === psicologaFiltro)?.nombre})
             </div>
             <div style={{ fontSize: 12, color: '#92702a', marginBottom: 12 }}>
-              Para vacaciones o licencias: deja "Hora" vacío y bloquea el día completo. Para un choque puntual (ej. un taller a esa hora), pon la hora exacta — solo tapa ese bloque, el resto del día sigue normal.
+              Para vacaciones o licencias: deja las horas vacías y bloquea el día completo. Para un choque puntual (ej. un taller), pon solo "Desde"; para un tramo (ej. 10:00 a 13:00), pon "Desde" y "Hasta" — el resto del día sigue normal.
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr 1.2fr', gap: 10, marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr 0.8fr 1.2fr', gap: 10, marginBottom: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Desde</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Desde (fecha)</label>
                 <input type="date" value={bloqueoInicio} onChange={e => setBloqueoInicio(e.target.value)} style={{
                   width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
                   border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
                 }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hasta</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hasta (fecha)</label>
                 <input type="date" value={bloqueoFin} onChange={e => setBloqueoFin(e.target.value)} style={{
                   width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
                   border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
                 }} />
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hora (opcional)</label>
-                <select value={bloqueoHora} onChange={e => setBloqueoHora(e.target.value)} style={{
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hora desde</label>
+                <select value={bloqueoHoraDesde} onChange={e => setBloqueoHoraDesde(e.target.value)} style={{
                   width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
                   border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }}>
                   <option value="">Todo el día</option>
                   {HORAS_DISPONIBLES.map(h => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hora hasta</label>
+                <select value={bloqueoHoraHasta} onChange={e => setBloqueoHoraHasta(e.target.value)} disabled={!bloqueoHoraDesde} style={{
+                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
+                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none',
+                  background: !bloqueoHoraDesde ? '#f4f2fb' : 'white' }}>
+                  <option value="">Solo esa hora</option>
+                  {HORAS_DISPONIBLES.filter(h => !bloqueoHoraDesde || h >= bloqueoHoraDesde).map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
               </div>
               <div>
@@ -1199,7 +1220,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1040' }}>
                           {formatFecha(b.fecha_inicio)} → {formatFecha(b.fecha_fin)}
-                          {b.hora && <span style={{ color: '#92702a' }}> · solo {b.hora}</span>}
+                          {b.hora && <span style={{ color: '#92702a' }}> · {b.hora_hasta ? `de ${b.hora} a ${b.hora_hasta}` : `solo ${b.hora}`}</span>}
                         </div>
                         {b.motivo && <div style={{ fontSize: 12, color: '#7b6fa0' }}>{b.motivo}</div>}
                         {reservasAfectadas.length > 0 && (
