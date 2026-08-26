@@ -1216,13 +1216,17 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
                 {bloqueosPsicologa.map(b => {
                   const reservasAfectadas = reservasEnRangoBloqueo(b);
                   return (
-                    <div key={b.id} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div key={b.id} style={{
+                      background: '#fef3c7', borderRadius: 10, padding: '10px 14px',
+                      borderLeft: '4px solid #d97706',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    }}>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1040' }}>
-                          {formatFecha(b.fecha_inicio)} → {formatFecha(b.fecha_fin)}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#7c4a03' }}>
+                          🔒 {formatFecha(b.fecha_inicio)} → {formatFecha(b.fecha_fin)}
                           {b.hora && <span style={{ color: '#92702a' }}> · {b.hora_hasta ? `de ${b.hora} a ${b.hora_hasta}` : `solo ${b.hora}`}</span>}
                         </div>
-                        {b.motivo && <div style={{ fontSize: 12, color: '#7b6fa0' }}>{b.motivo}</div>}
+                        {b.motivo && <div style={{ fontSize: 12, color: '#92702a' }}>{b.motivo}</div>}
                         {reservasAfectadas.length > 0 && (
                           <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 2 }}>
                             ⚠️ {reservasAfectadas.length} reserva(s) ya confirmada(s) en este rango — revísalas en "Reservas activas", el bloqueo no las cancela solo.
