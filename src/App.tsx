@@ -221,6 +221,7 @@ interface Slot {
   correo_estudiante: string | null;
   realizada: boolean;
   reserva_tipo: string | null;
+  revisado?: boolean;
 }
 
 async function cargarSlots(): Promise<Slot[]> {
@@ -830,7 +831,9 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   const conteoSemanal = (psiId: number) =>
     slots.filter(s => s.psicologa_id === psiId && s.fecha >= inicioSemana && s.fecha <= finSemana).length;
 
-  const reservasActivas = slots.filter(s => s.psicologa_id === psicologaFiltro && !s.disponible && !s.realizada);
+  const reservasActivas = slots
+    .filter(s => s.psicologa_id === psicologaFiltro && !s.disponible && !s.realizada)
+    .sort((a, b) => Number(!!a.revisado) - Number(!!b.revisado));
   const horariosDisponibles = slots.filter(s => s.psicologa_id === psicologaFiltro && s.disponible);
 
   const [notificarEstudiantes, setNotificarEstudiantes] = useState(true);
@@ -949,6 +952,13 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   async function marcarRealizada(id: string) {
     setCargando(true);
     await supabase.from('slots').update({ realizada: true }).eq('id', id);
+    recargar();
+    setCargando(false);
+  }
+
+  async function toggleRevisado(id: string, actual: boolean) {
+    setCargando(true);
+    await supabase.from('slots').update({ revisado: !actual }).eq('id', id);
     recargar();
     setCargando(false);
   }
@@ -1111,8 +1121,19 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {reservasActivas.map(s => (
-                <div key={s.id} style={{ background: 'white', borderRadius: 14, padding: 16, border: '1.5px solid #ede9f8' }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1040', marginBottom: 4 }}>{s.nombre_estudiante}</div>
+                <div key={s.id} style={{
+                  background: s.revisado ? '#f7f5fc' : 'white', borderRadius: 14, padding: 16,
+                  border: s.revisado ? '1.5px solid #ede9f8' : '1.5px solid #b7a9e0',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: '#1a1040' }}>{s.nombre_estudiante}</div>
+                    <button onClick={() => toggleRevisado(s.id, !!s.revisado)} disabled={cargando} style={{
+                      padding: '4px 10px', borderRadius: 20, fontWeight: 700, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+                      border: s.revisado ? '1.5px solid #c4b8e8' : '1.5px solid #7C6FAF',
+                      background: s.revisado ? '#ede9f8' : 'white',
+                      color: s.revisado ? '#6b5fa0' : '#7C6FAF', whiteSpace: 'nowrap',
+                    }}>{s.revisado ? '👁 Revisada' : 'Marcar revisada'}</button>
+                  </div>
                   <div style={{ fontSize: 13, color: '#7b6fa0', marginBottom: 2 }}>{formatFecha(s.fecha)} · {s.hora}</div>
                   <div style={{ fontSize: 13, color: '#7b6fa0', marginBottom: 2 }}>RUT: {s.rut_estudiante} · Carrera: {s.carrera}</div>
                   <div style={{ fontSize: 13, color: '#7b6fa0', marginBottom: 12 }}>📧 {s.correo_estudiante}</div>
