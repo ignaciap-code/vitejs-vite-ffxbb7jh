@@ -1193,7 +1193,10 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr 0.8fr 1.2fr', gap: 10, marginBottom: 12 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Desde (fecha)</label>
-                <input type="date" value={bloqueoInicio} onChange={e => setBloqueoInicio(e.target.value)} style={{
+                <input type="date" value={bloqueoInicio} onChange={e => {
+                  setBloqueoInicio(e.target.value);
+                  if (!bloqueoFin) setBloqueoFin(e.target.value);
+                }} style={{
                   width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
                   border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
                 }} />
