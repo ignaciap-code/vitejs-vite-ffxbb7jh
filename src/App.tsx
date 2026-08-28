@@ -282,7 +282,7 @@ function PoliticaPrivacidad({ onClose }: { onClose: () => void }) {
           <p>Sus datos se almacenan en servidores seguros provistos por <strong>Supabase</strong> (infraestructura en la nube bajo estándares de seguridad internacionales). El acceso está restringido exclusivamente al equipo de la Unidad de Bienestar y Salud Mental.</p>
 
           <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>6. Conservación de datos</h3>
-          <p>Sus datos serán conservados durante el período académico activo y eliminados o anonimizados una vez que dejen de ser necesarios para los fines descritos.</p>
+          <p>Su nombre, RUT, correo y carrera se conservan hasta <strong>1 año</strong> desde la fecha de la sesión agendada. Transcurrido ese plazo, estos datos se anonimizan automáticamente, conservándose únicamente el registro estadístico (fecha, hora y psicóloga) sin ninguna información que permita identificarlo.</p>
 
           <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>7. Sus derechos</h3>
           <p>Conforme a la Ley N° 21.719, usted tiene derecho a <strong>acceder, rectificar, cancelar y oponerse</strong> al tratamiento de sus datos (derechos ARCO), así como a revocar su consentimiento en cualquier momento. Para ejercer estos derechos, contáctenos en: <a href="mailto:bienestarysaludmental@uft.cl" style={{ color: '#3d2f7a' }}>bienestarysaludmental@uft.cl</a></p>
