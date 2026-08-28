@@ -15,8 +15,6 @@ const CARRERAS = [
 ];
 
 const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
-const ADMIN_PASS = 'bienestar2024';
-const BITACORA_PASS = 'bitacora2024';
 
 // ─── HORARIO FIJO SEMANAL ──────────────────────────────────────────────────
 // dia: 1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes
@@ -227,6 +225,19 @@ interface Slot {
 async function cargarSlots(): Promise<Slot[]> {
   const { data } = await supabase.from('slots').select('*').order('fecha').order('hora');
   return (data as Slot[]) || [];
+}
+
+// Usada por las vistas públicas (agendar). Trae solo horarios libres, sin
+// nombre/RUT/correo de ningún estudiante — apunta a la vista slots_disponibles,
+// que sí es legible sin sesión iniciada.
+async function cargarSlotsPublicos(): Promise<Slot[]> {
+  const { data } = await supabase.from('slots_disponibles').select('*').order('fecha').order('hora');
+  return ((data || []) as Array<{ id: string; psicologa_id: number; fecha: string; hora: string; disponible: boolean }>)
+    .map(s => ({
+      ...s,
+      nombre_estudiante: null, rut_estudiante: null, carrera: null, correo_estudiante: null,
+      realizada: false, reserva_tipo: null,
+    }));
 }
 
 // ─── POLÍTICA DE PRIVACIDAD ───────────────────────────────────────────────────
@@ -575,28 +586,46 @@ function VistaEstudiante({ slots, recargar }: { slots: Slot[]; recargar: () => v
 }
 
 // ─── VISTA CANCELAR ───────────────────────────────────────────────────────────
-function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => void }) {
+function VistaCancelar({ recargar }: { recargar: () => void }) {
   const [rut, setRut] = useState('');
   const [rutBuscado, setRutBuscado] = useState<string | null>(null);
+  const [misReservas, setMisReservas] = useState<Slot[]>([]);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [buscando, setBuscando] = useState(false);
 
-  const misReservas = rutBuscado
-    ? slots.filter(s => !s.disponible && !s.realizada &&
-        s.rut_estudiante?.replace(/[.\-]/g, '') === rutBuscado.replace(/[.\-]/g, ''))
-    : [];
-
-  function buscar() {
+  async function buscar() {
     if (!validarRut(rut)) { setError('RUT inválido'); return; }
-    setError(''); setRutBuscado(rut);
+    setError(''); setBuscando(true); setRutBuscado(rut);
+    try {
+      const resp = await fetch('/api/buscar-reserva', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rut }),
+      });
+      const body = await resp.json();
+      if (!resp.ok) { setError(body.error || 'Error al buscar'); setMisReservas([]); }
+      else setMisReservas((body.reservas || []) as Slot[]);
+    } catch {
+      setError('Error de red al buscar');
+      setMisReservas([]);
+    }
+    setBuscando(false);
   }
 
   async function handleCancelar(s: Slot) {
     setCargando(true);
-    await supabase.from('slots').update({
-      disponible: true, nombre_estudiante: null,
-      rut_estudiante: null, carrera: null, correo_estudiante: null,
-    }).eq('id', s.id);
+    const resp = await fetch('/api/cancelar-reserva', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: s.id, rut: rutBuscado }),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      setError(body.error || 'No se pudo cancelar');
+      setCargando(false);
+      return;
+    }
 
     // Notificar cancelación a psicóloga y bienestar
     fetch('/api/send-cancellation', {
@@ -611,6 +640,7 @@ function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => voi
       }),
     });
 
+    setMisReservas(prev => prev.filter(r => r.id !== s.id));
     recargar();
     setCargando(false);
   }
@@ -643,7 +673,7 @@ function VistaCancelar({ slots, recargar }: { slots: Slot[]; recargar: () => voi
         }}>Buscar</button>
       </div>
       {error && <div style={{ fontSize: 12, color: '#e05a5a', marginBottom: 12 }}>{error}</div>}
-      {rutBuscado && misReservas.length === 0 && (
+      {rutBuscado && !buscando && misReservas.length === 0 && !error && (
         <div style={{ textAlign: 'center', padding: 40, color: '#a89ec0' }}>No tienes horas reservadas</div>
       )}
       {misReservas.map(s => {
@@ -748,10 +778,18 @@ async function cargarBitacora(): Promise<SlotLog[]> {
 
 // ─── BLOQUEO DE RUT POR INASISTENCIA ───────────────────────────────────────────
 async function rutEstaBloqueado(rut: string): Promise<boolean> {
-  const rutLimpio = rut.replace(/[.\-]/g, '').toUpperCase();
-  const { data } = await supabase.from('ruts_bloqueados')
-    .select('rut').eq('rut', rutLimpio).eq('activo', true).maybeSingle();
-  return !!data;
+  try {
+    const resp = await fetch('/api/verificar-bloqueo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rut }),
+    });
+    if (!resp.ok) return false;
+    const body = await resp.json();
+    return !!body.bloqueado;
+  } catch {
+    return false;
+  }
 }
 
 async function marcarNoAsistio(slot: Slot) {
@@ -804,15 +842,12 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   const [bloqueoHoraDesde, setBloqueoHoraDesde] = useState('');
   const [bloqueoHoraHasta, setBloqueoHoraHasta] = useState('');
   const [bitacora, setBitacora] = useState<SlotLog[]>([]);
-  const [bitacoraAuth, setBitacoraAuth] = useState(false);
-  const [bitacoraPassInput, setBitacoraPassInput] = useState('');
-  const [bitacoraError, setBitacoraError] = useState(false);
   const [rutsBloqueados, setRutsBloqueados] = useState<RutBloqueado[]>([]);
 
   useEffect(() => {
-    if (tab === 'bitacora' && bitacoraAuth) cargarBitacora().then(setBitacora);
+    if (tab === 'bitacora') cargarBitacora().then(setBitacora);
     if (tab === 'bloqueados') cargarRutsBloqueados().then(setRutsBloqueados);
-  }, [tab, bitacoraAuth]);
+  }, [tab]);
 
   async function handleDesbloquear(rut: string) {
     if (!confirm('¿Confirmas que el estudiante vino presencialmente y quieres desbloquear su RUT?')) return;
@@ -820,11 +855,6 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     await desbloquearRut(rut);
     setRutsBloqueados(await cargarRutsBloqueados());
     setCargando(false);
-  }
-
-  function handleBitacoraLogin() {
-    if (bitacoraPassInput === BITACORA_PASS) { setBitacoraAuth(true); setBitacoraError(false); }
-    else setBitacoraError(true);
   }
 
   const { inicio: inicioSemana, fin: finSemana } = getRangoSemanaActual();
@@ -1021,26 +1051,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
         })}
       </div>
 
-      {tab === 'bitacora' && !bitacoraAuth && (
-        <div style={{ maxWidth: 320, margin: '30px auto', textAlign: 'center' }}>
-          <div style={{ fontSize: 36, marginBottom: 10 }}>🔒</div>
-          <p style={{ color: '#7b6fa0', marginBottom: 16, fontSize: 13 }}>Contraseña de bitácora (solo Ignacia)</p>
-          <input type="password" value={bitacoraPassInput}
-            onChange={e => { setBitacoraPassInput(e.target.value); setBitacoraError(false); }}
-            onKeyDown={e => e.key === 'Enter' && handleBitacoraLogin()}
-            placeholder="Contraseña"
-            style={{ width: '100%', padding: '10px 14px', borderRadius: 10, boxSizing: 'border-box',
-              border: `1.5px solid ${bitacoraError ? '#e05a5a' : '#dcd7f0'}`,
-              fontSize: 13, marginBottom: 8, fontFamily: 'inherit', outline: 'none' }} />
-          {bitacoraError && <div style={{ fontSize: 12, color: '#e05a5a', marginBottom: 8 }}>Contraseña incorrecta</div>}
-          <button onClick={handleBitacoraLogin} style={{
-            width: '100%', padding: 10, background: '#3d2f7a', color: 'white',
-            border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-          }}>Ingresar</button>
-        </div>
-      )}
-
-      {tab === 'bitacora' && bitacoraAuth && (
+      {tab === 'bitacora' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 12, color: '#a89ec0', marginBottom: 4 }}>Últimos movimientos (todas las psicólogas)</div>
           {bitacora.length === 0 ? (
@@ -1341,15 +1352,25 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
 
 // ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
 export default function App() {
+  const [slotsPublicos, setSlotsPublicos] = useState<Slot[] | null>(null);
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [diasBloqueados, setDiasBloqueados] = useState<DiaBloqueado[]>([]);
   const [vista, setVista] = useState<'estudiante' | 'cancelar' | 'admin'>('estudiante');
-  const [adminAuth, setAdminAuth] = useState(false);
+  const [session, setSession] = useState<import('@supabase/supabase-js').Session | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
   const [adminPass, setAdminPass] = useState('');
-  const [adminError, setAdminError] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const adminAuth = !!session;
 
-  // Recarga liviana: solo trae los datos tal cual están. La usan estudiantes
-  // al agendar/cancelar y el refresco periódico del panel admin.
+  // Recarga pública: horarios disponibles, sin datos de estudiantes. La usan
+  // las vistas de agendar/cancelar, sin necesitar sesión iniciada.
+  async function recargarPublico() {
+    setSlotsPublicos(await cargarSlotsPublicos());
+  }
+
+  // Recarga liviana del panel admin: solo trae los datos tal cual están.
+  // Requiere sesión iniciada (RLS exige rol authenticated).
   async function recargar() {
     const [data, bloqueos] = await Promise.all([cargarSlots(), cargarDiasBloqueados()]);
     setDiasBloqueados(bloqueos);
@@ -1369,7 +1390,15 @@ export default function App() {
     setSlots(agregados > 0 || vencidos > 0 ? await cargarSlots() : data);
   }
 
-  useEffect(() => { recargar(); }, []);
+  useEffect(() => { recargarPublico(); }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setSessionLoaded(true); });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (vista !== 'admin' || !adminAuth) return;
@@ -1378,12 +1407,19 @@ export default function App() {
     return () => clearInterval(id);
   }, [vista, adminAuth]);
 
-  function handleAdminLogin() {
-    if (adminPass === ADMIN_PASS) { setAdminAuth(true); setAdminError(false); }
-    else setAdminError(true);
+  async function handleAdminLogin() {
+    setAdminError('');
+    const { error } = await supabase.auth.signInWithPassword({ email: adminEmail, password: adminPass });
+    if (error) setAdminError('Correo o contraseña incorrectos');
+    else setAdminPass('');
   }
 
-  if (slots === null) return (
+  async function handleAdminLogout() {
+    await supabase.auth.signOut();
+    setAdminEmail(''); setAdminPass('');
+  }
+
+  if (slotsPublicos === null) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(160deg,#f0edfc,#e8f4fb)' }}>
       <div style={{ textAlign: 'center', color: '#7b6fa0' }}>
         <div style={{ fontSize: 40, marginBottom: 12 }}>🌿</div>
@@ -1411,7 +1447,7 @@ export default function App() {
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             {NAV.map(([val, label]) => (
-              <button key={val} onClick={() => { setVista(val); if (val !== 'admin') { setAdminAuth(false); setAdminPass(''); setAdminError(false); } }} style={{
+              <button key={val} onClick={() => setVista(val)} style={{
                 padding: '7px 12px', borderRadius: 8,
                 background: vista === val ? '#3d2f7a' : 'transparent',
                 color: vista === val ? 'white' : '#7b6fa0',
@@ -1425,28 +1461,52 @@ export default function App() {
       <BannerCrisis />
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px 80px' }}>
-        {vista === 'estudiante' && <VistaEstudiante slots={slots} recargar={recargar} />}
-        {vista === 'cancelar' && <VistaCancelar slots={slots} recargar={recargar} />}
-        {vista === 'admin' && !adminAuth && (
+        {vista === 'estudiante' && <VistaEstudiante slots={slotsPublicos} recargar={recargarPublico} />}
+        {vista === 'cancelar' && <VistaCancelar recargar={recargarPublico} />}
+        {vista === 'admin' && !sessionLoaded && (
+          <div style={{ textAlign: 'center', padding: 60, color: '#a89ec0' }}>Cargando…</div>
+        )}
+        {vista === 'admin' && sessionLoaded && !adminAuth && (
           <div style={{ maxWidth: 360, margin: '60px auto', textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
             <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a1040', marginBottom: 6 }}>Panel de psicólogas</h2>
-            <p style={{ color: '#7b6fa0', marginBottom: 24, fontSize: 14 }}>Ingresa la contraseña para acceder.</p>
+            <p style={{ color: '#7b6fa0', marginBottom: 24, fontSize: 14 }}>Ingresa con tu cuenta institucional.</p>
+            <input type="email" value={adminEmail}
+              onChange={e => { setAdminEmail(e.target.value); setAdminError(''); }}
+              placeholder="correo@uft.cl"
+              autoComplete="username"
+              style={{ width: '100%', padding: '12px 16px', borderRadius: 10, boxSizing: 'border-box',
+                border: '1.5px solid #dcd7f0',
+                fontSize: 14, marginBottom: 8, fontFamily: 'inherit', outline: 'none' }} />
             <input type="password" value={adminPass}
-              onChange={e => { setAdminPass(e.target.value); setAdminError(false); }}
+              onChange={e => { setAdminPass(e.target.value); setAdminError(''); }}
               onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
               placeholder="Contraseña"
+              autoComplete="current-password"
               style={{ width: '100%', padding: '12px 16px', borderRadius: 10, boxSizing: 'border-box',
                 border: `1.5px solid ${adminError ? '#e05a5a' : '#dcd7f0'}`,
                 fontSize: 14, marginBottom: 8, fontFamily: 'inherit', outline: 'none' }} />
-            {adminError && <div style={{ fontSize: 12, color: '#e05a5a', marginBottom: 8 }}>Contraseña incorrecta</div>}
+            {adminError && <div style={{ fontSize: 12, color: '#e05a5a', marginBottom: 8 }}>{adminError}</div>}
             <button onClick={handleAdminLogin} style={{
               width: '100%', padding: 12, background: '#3d2f7a', color: 'white',
               border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit',
             }}>Ingresar</button>
           </div>
         )}
-        {vista === 'admin' && adminAuth && <PanelAdmin slots={slots} recargar={recargar} recargarConAutosanado={recargarConAutosanado} diasBloqueados={diasBloqueados} />}
+        {vista === 'admin' && adminAuth && slots === null && (
+          <div style={{ textAlign: 'center', padding: 60, color: '#a89ec0' }}>Cargando panel…</div>
+        )}
+        {vista === 'admin' && adminAuth && slots !== null && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+              <button onClick={handleAdminLogout} style={{
+                padding: '6px 12px', background: 'none', color: '#a89ec0',
+                border: '1.5px solid #ede9f8', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+              }}>Cerrar sesión ({session?.user.email})</button>
+            </div>
+            <PanelAdmin slots={slots} recargar={recargar} recargarConAutosanado={recargarConAutosanado} diasBloqueados={diasBloqueados} />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Este cron corre server-side sin sesión de usuario, así que necesita la
+// service_role key (bypassa RLS) — nunca la clave anon, que dejará de poder
+// leer la tabla completa una vez habilitado RLS.
 const supabase = createClient(
   'https://rumestjktglrodfoatre.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1bWVzdGprdGdscm9kZm9hdHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MDYxMDIsImV4cCI6MjA5NjE4MjEwMn0.FFnWHGSwgSCVIBfRsN7bG_BW1C5tuwOtSTGLaXslor4'
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
