@@ -16,11 +16,6 @@ const CARRERAS = [
 
 const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
 
-// ─── HORARIO FIJO SEMANAL ──────────────────────────────────────────────────
-// dia: 1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes
-// Se autogeneran siempre 4 semanas hacia adelante (ver asegurarHorariosFijos).
-// Estos bloques quedan marcados como reserva_tipo:'fijo' y no se pueden
-// eliminar desde el panel (para evitar que se borren por error).
 const SEMANAS_VENTANA_FIJA = 4;
 
 const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
@@ -31,7 +26,7 @@ const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
   ],
   2: [ // Trinidad Montes
     { dia: 1, hora: '12:00' }, { dia: 1, hora: '15:00' },
-    { dia: 3, hora: '11:00' },
+    { dia: 3, hora: '11:00' }, { dia: 3, hora: '13:00' },
     { dia: 4, hora: '10:00' }, { dia: 4, hora: '13:00' },
     { dia: 5, hora: '10:00' },
   ],
@@ -72,9 +67,6 @@ async function cargarDiasBloqueados(): Promise<DiaBloqueado[]> {
   return (data as DiaBloqueado[]) || [];
 }
 
-// Sin "hora": tapa el día completo (vacaciones, licencias).
-// Con "hora" y sin "hora_hasta": tapa solo esa hora puntual (ej. un taller).
-// Con "hora" y "hora_hasta": tapa todo el tramo entre ambas.
 function horaEnRangoBloqueo(hora: string, desde?: string | null, hasta?: string | null) {
   if (!desde) return true;
   if (!hasta) return hora === desde;
@@ -88,8 +80,6 @@ function horaBloqueada(psiId: number, fecha: string, hora: string, bloqueos: Dia
   );
 }
 
-// Revisa la ventana de próximas semanas y crea los horarios fijos que falten,
-// saltándose las fechas/horas que estén dentro de un rango bloqueado (vacaciones, talleres, etc.)
 async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloqueado[] = []) {
   const ventana = generarVentanaFija();
   const existentes = new Set(slotsActuales.map(s => `${s.psicologa_id}|${s.fecha}|${s.hora}`));
@@ -97,11 +87,11 @@ async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloquea
 
   for (const psiIdStr of Object.keys(PLANTILLA_FIJA)) {
     const psiId = Number(psiIdStr);
-      for (const bloque of PLANTILLA_FIJA[psiId]) {
-        for (const { fecha, dow } of ventana) {
-          if (dow !== bloque.dia) continue;
-          if (horaBloqueada(psiId, fecha, bloque.hora, bloqueos)) continue;
-          const key = `${psiId}|${fecha}|${bloque.hora}`;
+    for (const bloque of PLANTILLA_FIJA[psiId]) {
+      for (const { fecha, dow } of ventana) {
+        if (dow !== bloque.dia) continue;
+        if (horaBloqueada(psiId, fecha, bloque.hora, bloqueos)) continue;
+        const key = `${psiId}|${fecha}|${bloque.hora}`;
         if (existentes.has(key)) continue;
         existentes.add(key);
         nuevos.push({
@@ -114,9 +104,6 @@ async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloquea
   }
 
   if (nuevos.length > 0) {
-    // upsert + ignoreDuplicates: si otra sesión ya insertó el mismo
-    // horario (psicologa_id+fecha+hora) entre que leímos y que escribimos,
-    // el constraint UNIQUE hace que esa fila se ignore en vez de duplicarse.
     await supabase
       .from('slots')
       .upsert(nuevos, { onConflict: 'psicologa_id,fecha,hora', ignoreDuplicates: true });
@@ -124,9 +111,6 @@ async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloquea
   return nuevos.length;
 }
 
-// Elimina horarios que ya pasaron de fecha y nunca se reservaron, dejando
-// registro en la bitácora como "no agendada". No toca reservas (aunque
-// no se hayan marcado como realizadas) ni sesiones ya completadas.
 async function limpiarVencidosSinReserva(slotsActuales: Slot[]) {
   const hoy = fmtLocal(new Date());
   const vencidos = slotsActuales.filter(s => s.disponible && !s.realizada && s.fecha < hoy);
@@ -174,8 +158,6 @@ function validarRut(rut: string) {
   return dv === dvReal;
 }
 
-// Formatea una fecha usando el día/mes/año LOCAL (evita el desfase que produce
-// toISOString(), que convierte a UTC y puede correr la fecha al día siguiente).
 function fmtLocal(d: Date) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -227,9 +209,6 @@ async function cargarSlots(): Promise<Slot[]> {
   return (data as Slot[]) || [];
 }
 
-// Usada por las vistas públicas (agendar). Trae solo horarios libres, sin
-// nombre/RUT/correo de ningún estudiante — apunta a la vista slots_disponibles,
-// que sí es legible sin sesión iniciada.
 async function cargarSlotsPublicos(): Promise<Slot[]> {
   const { data } = await supabase.from('slots_disponibles').select('*').order('fecha').order('hora');
   return ((data || []) as Array<{ id: string; psicologa_id: number; fecha: string; hora: string; disponible: boolean }>)
@@ -259,35 +238,26 @@ function PoliticaPrivacidad({ onClose }: { onClose: () => void }) {
             width: 32, height: 32, fontSize: 18, cursor: 'pointer', color: '#7b6fa0',
           }}>×</button>
         </div>
-
         <div style={{ fontSize: 13, color: '#4a4560', lineHeight: 1.7 }}>
           <p style={{ color: '#7b6fa0', fontSize: 12, marginBottom: 16 }}>
             Unidad de Bienestar y Salud Mental — Dirección de Asuntos Estudiantiles — Universidad Finis Terrae<br/>
             Última actualización: junio 2026
           </p>
-
           <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6 }}>1. Responsable del tratamiento</h3>
           <p>La <strong>Unidad de Bienestar y Salud Mental</strong>, dependiente de la Dirección de Asuntos Estudiantiales de la Universidad Finis Terrae, es responsable del tratamiento de los datos personales recopilados a través de esta plataforma. Contacto: <a href="mailto:bienestarysaludmental@uft.cl" style={{ color: '#3d2f7a' }}>bienestarysaludmental@uft.cl</a></p>
-
           <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>2. Datos que recopilamos</h3>
           <p>Al agendar una hora, recopilamos exclusivamente: nombre completo, RUT, carrera y correo electrónico institucional. <strong>No recopilamos</strong> información sobre el motivo de consulta, diagnósticos ni ningún dato de salud mental.</p>
-
           <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>3. Finalidad del tratamiento</h3>
           <p>Sus datos se utilizan exclusivamente para: gestionar y confirmar la reserva de hora de atención, y enviar recordatorios de la sesión agendada.</p>
-
           <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>4. Base de legitimación</h3>
           <p>El tratamiento se basa en el <strong>consentimiento expreso, libre, específico e informado</strong> que usted otorga al momento de agendar su hora, conforme a la Ley N° 21.719 sobre Protección de Datos Personales de Chile.</p>
-
           <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>5. Almacenamiento y seguridad</h3>
           <p>Sus datos se almacenan en servidores seguros provistos por <strong>Supabase</strong> (infraestructura en la nube bajo estándares de seguridad internacionales). El acceso está restringido exclusivamente al equipo de la Unidad de Bienestar y Salud Mental.</p>
-
           <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>6. Conservación de datos</h3>
           <p>Su nombre, RUT, correo y carrera se conservan hasta <strong>1 año</strong> desde la fecha de la sesión agendada. Transcurrido ese plazo, estos datos se anonimizan automáticamente, conservándose únicamente el registro estadístico (fecha, hora y psicóloga) sin ninguna información que permita identificarlo.</p>
-
           <h3 style={{ fontSize: 13, fontWeight: 800, color: '#1a1040', marginBottom: 6, marginTop: 16 }}>7. Sus derechos</h3>
           <p>Conforme a la Ley N° 21.719, usted tiene derecho a <strong>acceder, rectificar, cancelar y oponerse</strong> al tratamiento de sus datos (derechos ARCO), así como a revocar su consentimiento en cualquier momento. Para ejercer estos derechos, contáctenos en: <a href="mailto:bienestarysaludmental@uft.cl" style={{ color: '#3d2f7a' }}>bienestarysaludmental@uft.cl</a></p>
         </div>
-
         <button onClick={onClose} style={{
           width: '100%', marginTop: 20, padding: 11, background: '#3d2f7a',
           color: 'white', border: 'none', borderRadius: 10,
@@ -337,56 +307,59 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
   const [cargando, setCargando] = useState(false);
   const [verPolitica, setVerPolitica] = useState(false);
 
- async function handleReservar() {
-  const e: Record<string, string> = {};
-  if (!nombre.trim()) e.nombre = 'Requerido';
-  if (!validarRut(rut)) e.rut = 'RUT inválido';
-  if (!carrera) e.carrera = 'Requerido';
-  if (!correo.includes('@')) e.correo = 'Correo inválido';
-  if (!aceptaTerminos) e.terminos = 'Debes aceptar la política de privacidad para continuar';
-  if (Object.keys(e).length) { setErrores(e); return; }
-  setCargando(true);
+  async function handleReservar() {
+    const e: Record<string, string> = {};
+    if (!nombre.trim()) e.nombre = 'Requerido';
+    if (!validarRut(rut)) e.rut = 'RUT inválido';
+    if (!carrera) e.carrera = 'Requerido';
+    if (!correo.includes('@')) e.correo = 'Correo inválido';
+    if (!aceptaTerminos) e.terminos = 'Debes aceptar la política de privacidad para continuar';
+    if (Object.keys(e).length) { setErrores(e); return; }
+    setCargando(true);
 
-  if (await rutEstaBloqueado(rut)) {
-    setErrores({ rut: 'Tu RUT está bloqueado porque no avisaste y no llegaste a tu hora. Acércate a pedir una nueva hora.' });
-    setCargando(false);
-    return;
-  }
-
-  // Llama a la función atómica de Supabase — evita duplicados
-  const { data, error } = await supabase.rpc('reservar_slot', {
-    p_slot_id: slot.id,
-    p_nombre: nombre.trim(),
-    p_rut: rut.trim(),
-    p_carrera: carrera,
-    p_correo: correo.trim(),
-  });
-
-  if (error || !data?.ok) {
-    if (data?.error === 'hora_tomada') {
-      setErrores({ nombre: 'Esta hora ya fue tomada por otro estudiante. Por favor elige otro horario.' });
-    } else {
-      setErrores({ nombre: 'No se pudo reservar. Intenta nuevamente.' });
+    if (await rutEstaBloqueado(rut)) {
+      setErrores({ rut: 'Tu RUT está bloqueado porque no avisaste y no llegaste a tu hora. Acércate a pedir una nueva hora.' });
+      setCargando(false);
+      return;
     }
-    setCargando(false);
-    return;
-  }
 
-  const psi = PSICOLOGAS.find(x => x.id === slot.psicologa_id);
-  fetch('/api/send-confirmation', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      nombre: nombre.trim(),
-      correo: correo.trim(),
-      psicologa: psi?.nombre,
-      fechaRaw: slot.fecha,
-      horaRaw: slot.hora,
-    }),
-  });
-  onExito(slot);
-  setCargando(false);
-}
+    // ── RESERVA ATÓMICA vía RPC ──────────────────────────────────────────────
+    // La función reservar_slot en Supabase hace el UPDATE con WHERE disponible=true
+    // en una sola operación atómica, evitando que dos estudiantes tomen el mismo slot.
+    const { data, error } = await supabase.rpc('reservar_slot', {
+      p_slot_id: slot.id,
+      p_nombre: nombre.trim(),
+      p_rut: rut.trim(),
+      p_carrera: carrera,
+      p_correo: correo.trim(),
+    });
+
+    if (error || !data?.ok) {
+      if (data?.error === 'hora_tomada') {
+        setErrores({ nombre: 'Esta hora ya fue tomada por otro estudiante. Por favor elige otro horario.' });
+      } else {
+        setErrores({ nombre: 'No se pudo reservar. Intenta nuevamente.' });
+      }
+      setCargando(false);
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const psi = PSICOLOGAS.find(x => x.id === slot.psicologa_id);
+    fetch('/api/send-confirmation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre: nombre.trim(),
+        correo: correo.trim(),
+        psicologa: psi?.nombre,
+        fechaRaw: slot.fecha,
+        horaRaw: slot.hora,
+      }),
+    });
+    onExito(slot);
+    setCargando(false);
+  }
 
   return (
     <>
@@ -457,7 +430,6 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
               {errores.carrera && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.carrera}</div>}
             </div>
 
-            {/* Alerta de inasistencia */}
             <div style={{
               background: '#fff7ed', border: '1.5px solid #fdba74',
               borderRadius: 10, padding: '10px 14px',
@@ -467,7 +439,6 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
               </span>
             </div>
 
-            {/* Checkbox términos y condiciones */}
             <div style={{
               background: errores.terminos ? '#fff1f1' : '#f9f8ff',
               border: `1.5px solid ${errores.terminos ? '#fca5a5' : '#ede9f8'}`,
@@ -638,8 +609,6 @@ function VistaCancelar({ recargar }: { recargar: () => void }) {
       setCargando(false);
       return;
     }
-
-    // Notificar cancelación a psicóloga y bienestar
     fetch('/api/send-cancellation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -651,7 +620,6 @@ function VistaCancelar({ recargar }: { recargar: () => void }) {
         horaRaw: s.hora,
       }),
     });
-
     setMisReservas(prev => prev.filter(r => r.id !== s.id));
     recargar();
     setCargando(false);
@@ -730,14 +698,13 @@ function VistaCancelar({ recargar }: { recargar: () => void }) {
 
 function getRangoSemanaActual() {
   const hoy = new Date();
-  const dow = hoy.getDay(); // 0=domingo
+  const dow = hoy.getDay();
   const offsetLunes = dow === 0 ? -6 : 1 - dow;
   const lunes = new Date(hoy);
   lunes.setDate(hoy.getDate() + offsetLunes);
   const viernes = new Date(lunes);
   viernes.setDate(lunes.getDate() + 4);
-  const fmt = fmtLocal;
-  return { inicio: fmt(lunes), fin: fmt(viernes) };
+  return { inicio: fmtLocal(lunes), fin: fmtLocal(viernes) };
 }
 
 interface SlotLog {
@@ -788,7 +755,6 @@ async function cargarBitacora(): Promise<SlotLog[]> {
   return (data as SlotLog[]) || [];
 }
 
-// ─── BLOQUEO DE RUT POR INASISTENCIA ───────────────────────────────────────────
 async function rutEstaBloqueado(rut: string): Promise<boolean> {
   try {
     const resp = await fetch('/api/verificar-bloqueo', {
@@ -855,6 +821,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   const [bloqueoHoraHasta, setBloqueoHoraHasta] = useState('');
   const [bitacora, setBitacora] = useState<SlotLog[]>([]);
   const [rutsBloqueados, setRutsBloqueados] = useState<RutBloqueado[]>([]);
+  const [notificarEstudiantes, setNotificarEstudiantes] = useState(true);
 
   useEffect(() => {
     if (tab === 'bitacora') cargarBitacora().then(setBitacora);
@@ -877,8 +844,6 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     .filter(s => s.psicologa_id === psicologaFiltro && !s.disponible && !s.realizada)
     .sort((a, b) => Number(!!a.revisado) - Number(!!b.revisado));
   const horariosDisponibles = slots.filter(s => s.psicologa_id === psicologaFiltro && s.disponible);
-
-  const [notificarEstudiantes, setNotificarEstudiantes] = useState(true);
 
   async function bloquearRango() {
     if (!bloqueoInicio || !bloqueoFin) return;
@@ -913,9 +878,8 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
                 motivo: bloqueoMotivo,
               }),
             });
-            if (resp.ok) {
-              notificados++;
-            } else {
+            if (resp.ok) notificados++;
+            else {
               const cuerpo = await resp.json().catch(() => ({}));
               erroresCorreo.push(`${s.correo_estudiante}: ${cuerpo.error || resp.status}`);
             }
@@ -1072,39 +1036,11 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
             bitacora.map(log => (
               <div key={log.id} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', border: '1.5px solid #ede9f8', fontSize: 13 }}>
                 <strong>{PSICOLOGAS.find(p => p.id === log.psicologa_id)?.nombre}</strong>
-                {log.accion === 'eliminado' && (
-                  <>
-                    {' · 🗑 eliminó '}{formatFecha(log.fecha)} · {log.hora}
-                    {log.reserva_tipo === 'fijo' && <span style={{ color: '#b91c1c', fontWeight: 700 }}> (era fijo)</span>}
-                    {log.nombre_estudiante && (
-                      <div style={{ fontSize: 12, color: '#7b6fa0', marginTop: 2 }}>
-                        Estudiante: {log.nombre_estudiante}{log.correo_estudiante ? ` · ${log.correo_estudiante}` : ''}
-                      </div>
-                    )}
-                  </>
-                )}
-                {log.accion === 'bloqueo_creado' && (
-                  <>
-                    {' · 🏖 bloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}
-                    {log.hora && <span style={{ color: '#92702a' }}> ({log.hora_hasta ? `de ${log.hora} a ${log.hora_hasta}` : `solo ${log.hora}`})</span>}
-                    {log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}
-                  </>
-                )}
-                {log.accion === 'bloqueo_eliminado' && (
-                  <>
-                    {' · ✅ desbloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}
-                    {log.hora && <span style={{ color: '#92702a' }}> ({log.hora_hasta ? `de ${log.hora} a ${log.hora_hasta}` : `solo ${log.hora}`})</span>}
-                    {log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}
-                  </>
-                )}
-                {log.accion === 'no_agendada' && (
-                  <>
-                    {' · 📭 venció sin agendar '}{formatFecha(log.fecha)} · {log.hora}
-                  </>
-                )}
-                <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>
-                  {new Date(log.eliminado_en).toLocaleString('es-CL')}
-                </div>
+                {log.accion === 'eliminado' && (<>{' · 🗑 eliminó '}{formatFecha(log.fecha)} · {log.hora}{log.reserva_tipo === 'fijo' && <span style={{ color: '#b91c1c', fontWeight: 700 }}> (era fijo)</span>}{log.nombre_estudiante && (<div style={{ fontSize: 12, color: '#7b6fa0', marginTop: 2 }}>Estudiante: {log.nombre_estudiante}{log.correo_estudiante ? ` · ${log.correo_estudiante}` : ''}</div>)}</>)}
+                {log.accion === 'bloqueo_creado' && (<>{' · 🏖 bloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}{log.hora && <span style={{ color: '#92702a' }}> ({log.hora_hasta ? `de ${log.hora} a ${log.hora_hasta}` : `solo ${log.hora}`})</span>}{log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}</>)}
+                {log.accion === 'bloqueo_eliminado' && (<>{' · ✅ desbloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}{log.hora && <span style={{ color: '#92702a' }}> ({log.hora_hasta ? `de ${log.hora} a ${log.hora_hasta}` : `solo ${log.hora}`})</span>}{log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}</>)}
+                {log.accion === 'no_agendada' && (<>{' · 📭 venció sin agendar '}{formatFecha(log.fecha)} · {log.hora}</>)}
+                <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>{new Date(log.eliminado_en).toLocaleString('es-CL')}</div>
               </div>
             ))
           )}
@@ -1114,7 +1050,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
       {tab === 'bloqueados' && (
         <div>
           <div style={{ fontSize: 12, color: '#a89ec0', marginBottom: 12 }}>
-            Estudiantes que no llegaron y no avisaron. No pueden agendar en línea hasta que se desbloqueen (ej. cuando vengan presencialmente a la DAE).
+            Estudiantes que no llegaron y no avisaron. No pueden agendar en línea hasta que se desbloqueen.
           </div>
           {rutsBloqueados.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#a89ec0' }}>No hay RUTs bloqueados</div>
@@ -1200,57 +1136,39 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
               🏖 Bloquear días ({PSICOLOGAS.find(p => p.id === psicologaFiltro)?.nombre})
             </div>
             <div style={{ fontSize: 12, color: '#92702a', marginBottom: 12 }}>
-              Para vacaciones o licencias: deja las horas vacías y bloquea el día completo. Para un choque puntual (ej. un taller), pon solo "Desde"; para un tramo (ej. 10:00 a 13:00), pon "Desde" y "Hasta" — el resto del día sigue normal.
+              Para vacaciones o licencias: deja las horas vacías y bloquea el día completo. Para un choque puntual (ej. un taller), pon solo "Desde"; para un tramo, pon "Desde" y "Hasta".
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr 0.8fr 1.2fr', gap: 10, marginBottom: 12 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Desde (fecha)</label>
-                <input type="date" value={bloqueoInicio} onChange={e => {
-                  setBloqueoInicio(e.target.value);
-                  if (!bloqueoFin) setBloqueoFin(e.target.value);
-                }} style={{
-                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
-                }} />
+                <input type="date" value={bloqueoInicio} onChange={e => { setBloqueoInicio(e.target.value); if (!bloqueoFin) setBloqueoFin(e.target.value); }} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box', border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }} />
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hasta (fecha)</label>
-                <input type="date" value={bloqueoFin} onChange={e => setBloqueoFin(e.target.value)} style={{
-                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
-                }} />
+                <input type="date" value={bloqueoFin} onChange={e => setBloqueoFin(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box', border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }} />
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hora desde</label>
-                <select value={bloqueoHoraDesde} onChange={e => setBloqueoHoraDesde(e.target.value)} style={{
-                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }}>
+                <select value={bloqueoHoraDesde} onChange={e => setBloqueoHoraDesde(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box', border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }}>
                   <option value="">Todo el día</option>
                   {HORAS_DISPONIBLES.map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hora hasta</label>
-                <select value={bloqueoHoraHasta} onChange={e => setBloqueoHoraHasta(e.target.value)} disabled={!bloqueoHoraDesde} style={{
-                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none',
-                  background: !bloqueoHoraDesde ? '#f4f2fb' : 'white' }}>
+                <select value={bloqueoHoraHasta} onChange={e => setBloqueoHoraHasta(e.target.value)} disabled={!bloqueoHoraDesde} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box', border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: !bloqueoHoraDesde ? '#f4f2fb' : 'white' }}>
                   <option value="">Solo esa hora</option>
                   {HORAS_DISPONIBLES.filter(h => !bloqueoHoraDesde || h >= bloqueoHoraDesde).map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Motivo (opcional)</label>
-                <input type="text" value={bloqueoMotivo} onChange={e => setBloqueoMotivo(e.target.value)} placeholder="Vacaciones / Taller"
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }} />
+                <input type="text" value={bloqueoMotivo} onChange={e => setBloqueoMotivo(e.target.value)} placeholder="Vacaciones / Taller" style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box', border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }} />
               </div>
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer' }}>
               <input type="checkbox" checked={notificarEstudiantes} onChange={e => setNotificarEstudiantes(e.target.checked)} />
-              <span style={{ fontSize: 12, color: '#92702a' }}>
-                Si hay estudiantes ya agendados en el rango, cancelar sus horas y avisarles por correo (el correo dice "fuerza mayor", sin detalle — el motivo que escribas arriba queda solo interno, en la bitácora)
-              </span>
+              <span style={{ fontSize: 12, color: '#92702a' }}>Si hay estudiantes ya agendados en el rango, cancelar sus horas y avisarles por correo</span>
             </label>
             <button onClick={bloquearRango} disabled={cargando || !bloqueoInicio || !bloqueoFin} style={{
               width: '100%', padding: 11, background: !bloqueoInicio || !bloqueoFin ? '#f0e6c0' : '#92702a',
@@ -1263,11 +1181,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
                 {bloqueosPsicologa.map(b => {
                   const reservasAfectadas = reservasEnRangoBloqueo(b);
                   return (
-                    <div key={b.id} style={{
-                      background: '#fef3c7', borderRadius: 10, padding: '10px 14px',
-                      borderLeft: '4px solid #d97706',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    }}>
+                    <div key={b.id} style={{ background: '#fef3c7', borderRadius: 10, padding: '10px 14px', borderLeft: '4px solid #d97706', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: '#7c4a03' }}>
                           🔒 {formatFecha(b.fecha_inicio)} → {formatFecha(b.fecha_fin)}
@@ -1276,15 +1190,11 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
                         {b.motivo && <div style={{ fontSize: 12, color: '#92702a' }}>{b.motivo}</div>}
                         {reservasAfectadas.length > 0 && (
                           <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 2 }}>
-                            ⚠️ {reservasAfectadas.length} reserva(s) ya confirmada(s) en este rango — revísalas en "Reservas activas", el bloqueo no las cancela solo.
+                            ⚠️ {reservasAfectadas.length} reserva(s) ya confirmada(s) en este rango
                           </div>
                         )}
                       </div>
-                      <button onClick={() => desbloquear(b.id)} disabled={cargando} style={{
-                        padding: '6px 12px', background: '#f0fdf4', border: '1.5px solid #86efac',
-                        borderRadius: 8, fontWeight: 700, fontSize: 12, color: '#166534',
-                        cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                      }}>Desbloquear</button>
+                      <button onClick={() => desbloquear(b.id)} disabled={cargando} style={{ padding: '6px 12px', background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 8, fontWeight: 700, fontSize: 12, color: '#166534', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>Desbloquear</button>
                     </div>
                   );
                 })}
@@ -1297,29 +1207,20 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Psicóloga</label>
-                <select value={nuevaPsi} onChange={e => setNuevaPsi(Number(e.target.value))} style={{
-                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
-                }}>
+                <select value={nuevaPsi} onChange={e => setNuevaPsi(Number(e.target.value))} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box', border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }}>
                   {PSICOLOGAS.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Fecha</label>
-                <select value={nuevaFecha} onChange={e => setNuevaFecha(e.target.value)} style={{
-                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
-                }}>
+                <select value={nuevaFecha} onChange={e => setNuevaFecha(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box', border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }}>
                   <option value="">Selecciona...</option>
                   {fechasProximas.map(f => <option key={f} value={f}>{formatFecha(f)}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: 12, fontWeight: 700, color: '#7b6fa0', display: 'block', marginBottom: 4 }}>Hora</label>
-                <select value={nuevaHora} onChange={e => setNuevaHora(e.target.value)} style={{
-                  width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box',
-                  border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white',
-                }}>
+                <select value={nuevaHora} onChange={e => setNuevaHora(e.target.value)} style={{ width: '100%', padding: '9px 12px', borderRadius: 8, boxSizing: 'border-box', border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'white' }}>
                   <option value="">Selecciona...</option>
                   {HORAS_DISPONIBLES.map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
@@ -1332,6 +1233,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
             }}>Agregar horario</button>
             {msgExito && <div style={{ fontSize: 13, textAlign: 'center', marginTop: 8, color: '#166534' }}>{msgExito}</div>}
           </div>
+
           <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1040', marginBottom: 12 }}>
             Horarios disponibles de {PSICOLOGAS.find(p => p.id === psicologaFiltro)?.nombre}
           </div>
@@ -1340,10 +1242,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {horariosDisponibles.map(s => (
-                <div key={s.id} style={{
-                  background: 'white', borderRadius: 12, padding: '12px 16px', border: '1.5px solid #ede9f8',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
+                <div key={s.id} style={{ background: 'white', borderRadius: 12, padding: '12px 16px', border: '1.5px solid #ede9f8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontSize: 14, color: '#1a1040', fontWeight: 600 }}>{formatFecha(s.fecha)} · {s.hora}</div>
                     {s.reserva_tipo === 'fijo' && (
@@ -1378,25 +1277,16 @@ export default function App() {
   const [adminError, setAdminError] = useState('');
   const adminAuth = !!session;
 
-  // Recarga pública: horarios disponibles, sin datos de estudiantes. La usan
-  // las vistas de agendar/cancelar, sin necesitar sesión iniciada.
   async function recargarPublico() {
     setSlotsPublicos(await cargarSlotsPublicos());
   }
 
-  // Recarga liviana del panel admin: solo trae los datos tal cual están.
-  // Requiere sesión iniciada (RLS exige rol authenticated).
   async function recargar() {
     const [data, bloqueos] = await Promise.all([cargarSlots(), cargarDiasBloqueados()]);
     setDiasBloqueados(bloqueos);
     setSlots(data);
   }
 
-  // Recarga con autosanado: además regenera horarios fijos faltantes y
-  // limpia vencidos. Corre SOLO desde el panel admin autenticado (al entrar
-  // y tras crear/eliminar un bloqueo), nunca en cada visita de un estudiante,
-  // para minimizar las ventanas de carrera que generan horarios duplicados
-  // o que se cuelan dentro de un rango recién bloqueado.
   async function recargarConAutosanado() {
     const [data, bloqueos] = await Promise.all([cargarSlots(), cargarDiasBloqueados()]);
     setDiasBloqueados(bloqueos);
@@ -1486,21 +1376,10 @@ export default function App() {
             <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
             <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a1040', marginBottom: 6 }}>Panel de psicólogas</h2>
             <p style={{ color: '#7b6fa0', marginBottom: 24, fontSize: 14 }}>Ingresa con tu cuenta institucional.</p>
-            <input type="email" value={adminEmail}
-              onChange={e => { setAdminEmail(e.target.value); setAdminError(''); }}
-              placeholder="correo@uft.cl"
-              autoComplete="username"
-              style={{ width: '100%', padding: '12px 16px', borderRadius: 10, boxSizing: 'border-box',
-                border: '1.5px solid #dcd7f0',
-                fontSize: 14, marginBottom: 8, fontFamily: 'inherit', outline: 'none' }} />
-            <input type="password" value={adminPass}
-              onChange={e => { setAdminPass(e.target.value); setAdminError(''); }}
-              onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
-              placeholder="Contraseña"
-              autoComplete="current-password"
-              style={{ width: '100%', padding: '12px 16px', borderRadius: 10, boxSizing: 'border-box',
-                border: `1.5px solid ${adminError ? '#e05a5a' : '#dcd7f0'}`,
-                fontSize: 14, marginBottom: 8, fontFamily: 'inherit', outline: 'none' }} />
+            <input type="email" value={adminEmail} onChange={e => { setAdminEmail(e.target.value); setAdminError(''); }} placeholder="correo@uft.cl" autoComplete="username"
+              style={{ width: '100%', padding: '12px 16px', borderRadius: 10, boxSizing: 'border-box', border: '1.5px solid #dcd7f0', fontSize: 14, marginBottom: 8, fontFamily: 'inherit', outline: 'none' }} />
+            <input type="password" value={adminPass} onChange={e => { setAdminPass(e.target.value); setAdminError(''); }} onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} placeholder="Contraseña" autoComplete="current-password"
+              style={{ width: '100%', padding: '12px 16px', borderRadius: 10, boxSizing: 'border-box', border: `1.5px solid ${adminError ? '#e05a5a' : '#dcd7f0'}`, fontSize: 14, marginBottom: 8, fontFamily: 'inherit', outline: 'none' }} />
             {adminError && <div style={{ fontSize: 12, color: '#e05a5a', marginBottom: 8 }}>{adminError}</div>}
             <button onClick={handleAdminLogin} style={{
               width: '100%', padding: 12, background: '#3d2f7a', color: 'white',
