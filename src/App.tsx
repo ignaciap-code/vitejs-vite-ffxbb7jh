@@ -337,44 +337,56 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
   const [cargando, setCargando] = useState(false);
   const [verPolitica, setVerPolitica] = useState(false);
 
-  async function handleReservar() {
-    const e: Record<string, string> = {};
-    if (!nombre.trim()) e.nombre = 'Requerido';
-    if (!validarRut(rut)) e.rut = 'RUT inválido';
-    if (!carrera) e.carrera = 'Requerido';
-    if (!correo.includes('@')) e.correo = 'Correo inválido';
-    if (!aceptaTerminos) e.terminos = 'Debes aceptar la política de privacidad para continuar';
-    if (Object.keys(e).length) { setErrores(e); return; }
-    setCargando(true);
-    if (await rutEstaBloqueado(rut)) {
-      setErrores({ rut: 'Tu RUT está bloqueado porque no avisaste y no llegaste a tu hora. Acércate a pedir una nueva hora.' });
-      setCargando(false);
-      return;
-    }
-    const { error } = await supabase.from('slots').update({
-      disponible: false,
-      nombre_estudiante: nombre.trim(),
-      rut_estudiante: rut.trim(),
-      carrera,
-      correo_estudiante: correo.trim(),
-    }).eq('id', slot.id);
-    if (!error) {
-      const psi = PSICOLOGAS.find(x => x.id === slot.psicologa_id);
-      fetch('/api/send-confirmation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: nombre.trim(),
-          correo: correo.trim(),
-          psicologa: psi?.nombre,
-          fechaRaw: slot.fecha,
-          horaRaw: slot.hora,
-        }),
-      });
-      onExito(slot);
+ async function handleReservar() {
+  const e: Record<string, string> = {};
+  if (!nombre.trim()) e.nombre = 'Requerido';
+  if (!validarRut(rut)) e.rut = 'RUT inválido';
+  if (!carrera) e.carrera = 'Requerido';
+  if (!correo.includes('@')) e.correo = 'Correo inválido';
+  if (!aceptaTerminos) e.terminos = 'Debes aceptar la política de privacidad para continuar';
+  if (Object.keys(e).length) { setErrores(e); return; }
+  setCargando(true);
+
+  if (await rutEstaBloqueado(rut)) {
+    setErrores({ rut: 'Tu RUT está bloqueado porque no avisaste y no llegaste a tu hora. Acércate a pedir una nueva hora.' });
+    setCargando(false);
+    return;
+  }
+
+  // Llama a la función atómica de Supabase — evita duplicados
+  const { data, error } = await supabase.rpc('reservar_slot', {
+    p_slot_id: slot.id,
+    p_nombre: nombre.trim(),
+    p_rut: rut.trim(),
+    p_carrera: carrera,
+    p_correo: correo.trim(),
+  });
+
+  if (error || !data?.ok) {
+    if (data?.error === 'hora_tomada') {
+      setErrores({ nombre: 'Esta hora ya fue tomada por otro estudiante. Por favor elige otro horario.' });
+    } else {
+      setErrores({ nombre: 'No se pudo reservar. Intenta nuevamente.' });
     }
     setCargando(false);
+    return;
   }
+
+  const psi = PSICOLOGAS.find(x => x.id === slot.psicologa_id);
+  fetch('/api/send-confirmation', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nombre: nombre.trim(),
+      correo: correo.trim(),
+      psicologa: psi?.nombre,
+      fechaRaw: slot.fecha,
+      horaRaw: slot.hora,
+    }),
+  });
+  onExito(slot);
+  setCargando(false);
+}
 
   return (
     <>
