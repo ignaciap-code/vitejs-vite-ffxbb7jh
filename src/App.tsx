@@ -18,25 +18,7 @@ const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
 
 const SEMANAS_VENTANA_FIJA = 4;
 
-const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
-  1: [ // Francesca Figueroa
-    { dia: 1, hora: '11:00' }, { dia: 1, hora: '12:00' },
-    { dia: 3, hora: '12:00' }, { dia: 3, hora: '13:00' },
-    { dia: 4, hora: '11:00' }, { dia: 4, hora: '12:00' },
-  ],
-  2: [ // Trinidad Montes
-    { dia: 1, hora: '12:00' }, { dia: 1, hora: '15:00' },
-    { dia: 3, hora: '11:00' }, { dia: 3, hora: '13:00' },
-    { dia: 4, hora: '10:00' }, { dia: 4, hora: '13:00' },
-    { dia: 5, hora: '10:00' },
-  ],
-  3: [ // Andrea García
-    { dia: 1, hora: '15:00' },
-    { dia: 2, hora: '10:00' }, { dia: 2, hora: '13:00' },
-    { dia: 4, hora: '10:00' }, { dia: 4, hora: '12:00' },
-    { dia: 5, hora: '10:00' }, { dia: 5, hora: '12:00' },
-  ],
-};
+
 
 function generarVentanaFija(semanas = SEMANAS_VENTANA_FIJA) {
   const dias: { fecha: string; dow: number }[] = [];
