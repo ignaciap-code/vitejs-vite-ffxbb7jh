@@ -2,10 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
 const PSICOLOGAS = [
-  { id: 1, nombre: 'Francesca Figueroa', color: '#7C6FAF', avatar: 'FF' },
   { id: 2, nombre: 'Trinidad Montes', color: '#4A8FA3', avatar: 'TM' },
   { id: 3, nombre: 'Andrea García', color: '#A06B8A', avatar: 'AG' },
-  { id: 4, nombre: 'Antonia Escalona', color: '#B08858', avatar: 'AE' },
 ];
 
 const CARRERAS = [
@@ -19,11 +17,6 @@ const CORREO_BIENESTAR = 'bienestarysaludmental@uft.cl';
 const SEMANAS_VENTANA_FIJA = 4;
 
 const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
-  1: [ // Francesca Figueroa
-    { dia: 1, hora: '11:00' }, { dia: 1, hora: '12:00' },
-    { dia: 3, hora: '12:00' }, { dia: 3, hora: '13:00' },
-    { dia: 4, hora: '11:00' }, { dia: 4, hora: '12:00' },
-  ],
   2: [ // Trinidad Montes
     { dia: 1, hora: '12:00' }, { dia: 1, hora: '15:00' },
     { dia: 3, hora: '11:00' }, { dia: 3, hora: '13:00' },
@@ -428,6 +421,16 @@ function ModalReserva({ slot, onClose, onExito }: { slot: Slot; onClose: () => v
                 {CARRERAS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               {errores.carrera && <div style={{ fontSize: 11, color: '#e05a5a', marginTop: 2 }}>{errores.carrera}</div>}
+            </div>
+
+            {/* Aviso de una sola hora */}
+            <div style={{
+              background: '#f0edfc', border: '1.5px solid #c4b8e8',
+              borderRadius: 10, padding: '10px 14px',
+            }}>
+              <span style={{ fontSize: 12, color: '#3d2f7a', lineHeight: 1.5 }}>
+                🗓 <strong>Por favor agenda solo una hora.</strong> Nosotras nos aseguraremos de que puedas tomar la siguiente cuando corresponda.
+              </span>
             </div>
 
             <div style={{
@@ -970,9 +973,23 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   }
 
   async function noAsistio(s: Slot) {
-    if (!confirm(`¿Confirmas que ${s.nombre_estudiante} no llegó y no avisó?\n\nSu RUT quedará bloqueado para agendar en línea hasta que se desbloquee manualmente.`)) return;
+    if (!confirm(`¿Confirmas que ${s.nombre_estudiante} no llegó y no avisó?\n\nSu RUT quedará bloqueado y se le enviará un correo automático.`)) return;
     setCargando(true);
     await marcarNoAsistio(s);
+    if (s.correo_estudiante) {
+      const psi = PSICOLOGAS.find(p => p.id === s.psicologa_id);
+      fetch('/api/send-noshow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: s.nombre_estudiante,
+          correo: s.correo_estudiante,
+          psicologa: psi?.nombre,
+          fechaRaw: s.fecha,
+          horaRaw: s.hora,
+        }),
+      });
+    }
     recargar();
     setCargando(false);
   }
