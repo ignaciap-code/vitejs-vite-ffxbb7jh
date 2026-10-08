@@ -868,9 +868,8 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     );
     let notificados = 0;
     const erroresCorreo: string[] = [];
-    if (notificarEstudiantes) {
-      for (const s of aCancelar) {
-        if (s.correo_estudiante) {
+    for (const s of aCancelar) {
+      if (notificarEstudiantes && s.correo_estudiante) {
           try {
             const resp = await fetch('/api/send-cancelacion-fuerza-mayor', {
               method: 'POST',
@@ -889,13 +888,10 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
           } catch (e: any) {
             erroresCorreo.push(`${s.correo_estudiante}: ${e?.message || 'error de red'}`);
           }
-        }
-        await registrarEliminacion(s);
-        await supabase.from('slots').update({
-          disponible: true, nombre_estudiante: null, rut_estudiante: null,
-          carrera: null, correo_estudiante: null,
-        }).eq('id', s.id);
       }
+      // La hora queda dentro del bloqueo: se elimina, NO se vuelve a dejar disponible.
+      await registrarEliminacion(s);
+      await supabase.from('slots').delete().eq('id', s.id);
     }
 
     await supabase.from('dias_bloqueados').insert({
