@@ -10,14 +10,9 @@ const SEMANAS_VENTANA_FIJA = 4;
 // Debe mantenerse igual a PLANTILLA_FIJA en src/App.tsx — si cambian los
 // horarios de alguna psicóloga ahí, hay que replicar el cambio acá también.
 const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
-  1: [ // Francesca Figueroa
-    { dia: 1, hora: '11:00' }, { dia: 1, hora: '12:00' },
-    { dia: 3, hora: '12:00' }, { dia: 3, hora: '13:00' },
-    { dia: 4, hora: '11:00' }, { dia: 4, hora: '12:00' },
-  ],
   2: [ // Trinidad Montes
     { dia: 1, hora: '12:00' }, { dia: 1, hora: '15:00' },
-    { dia: 3, hora: '11:00' },
+    { dia: 3, hora: '11:00' }, { dia: 3, hora: '13:00' },
     { dia: 4, hora: '10:00' }, { dia: 4, hora: '13:00' },
     { dia: 5, hora: '10:00' },
   ],
@@ -27,6 +22,18 @@ const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
     { dia: 4, hora: '10:00' }, { dia: 4, hora: '12:00' },
     { dia: 5, hora: '10:00' }, { dia: 5, hora: '12:00' },
   ],
+  5: [ // Macarena Lisperguer (desde el 12-11-2026)
+    { dia: 1, hora: '10:00' },
+    { dia: 2, hora: '11:00' }, { dia: 2, hora: '15:00' },
+    { dia: 3, hora: '10:00' }, { dia: 3, hora: '15:00' },
+    { dia: 4, hora: '15:00' },
+    { dia: 5, hora: '12:00' },
+  ],
+};
+
+// Debe mantenerse igual a INICIO_PLANTILLA en src/App.tsx.
+const INICIO_PLANTILLA: Record<number, string> = {
+  5: '2026-11-12', // Macarena Lisperguer
 };
 
 function fmtLocal(d: Date) {
@@ -76,6 +83,7 @@ export default async function handler(req: any, res: any) {
     for (const bloque of PLANTILLA_FIJA[psiId]) {
       for (const { fecha, dow } of ventana) {
         if (dow !== bloque.dia) continue;
+        if (INICIO_PLANTILLA[psiId] && fecha < INICIO_PLANTILLA[psiId]) continue;
         const bloqueado = (bloqueos || []).some((b: any) =>
           b.psicologa_id === psiId && fecha >= b.fecha_inicio && fecha <= b.fecha_fin &&
           horaEnRangoBloqueo(bloque.hora, b.hora, b.hora_hasta)

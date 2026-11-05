@@ -4,6 +4,7 @@ import { supabase } from './supabaseClient';
 const PSICOLOGAS = [
   { id: 2, nombre: 'Trinidad Montes', color: '#4A8FA3', avatar: 'TM' },
   { id: 3, nombre: 'Andrea García', color: '#A06B8A', avatar: 'AG' },
+  { id: 5, nombre: 'Macarena Lisperguer', color: '#6B8F5E', avatar: 'ML' },
 ];
 
 const CARRERAS = [
@@ -29,6 +30,18 @@ const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
     { dia: 4, hora: '10:00' }, { dia: 4, hora: '12:00' },
     { dia: 5, hora: '10:00' }, { dia: 5, hora: '12:00' },
   ],
+  5: [ // Macarena Lisperguer (desde el 12-11-2026)
+    { dia: 1, hora: '10:00' },
+    { dia: 2, hora: '11:00' }, { dia: 2, hora: '15:00' },
+    { dia: 3, hora: '10:00' }, { dia: 3, hora: '15:00' },
+    { dia: 4, hora: '15:00' },
+    { dia: 5, hora: '12:00' },
+  ],
+};
+
+// Fecha desde la que se generan horarios fijos para psicólogas que se incorporan.
+const INICIO_PLANTILLA: Record<number, string> = {
+  5: '2026-11-12', // Macarena Lisperguer
 };
 
 function generarVentanaFija(semanas = SEMANAS_VENTANA_FIJA) {
@@ -83,6 +96,7 @@ async function asegurarHorariosFijos(slotsActuales: Slot[], bloqueos: DiaBloquea
     for (const bloque of PLANTILLA_FIJA[psiId]) {
       for (const { fecha, dow } of ventana) {
         if (dow !== bloque.dia) continue;
+        if (INICIO_PLANTILLA[psiId] && fecha < INICIO_PLANTILLA[psiId]) continue;
         if (horaBloqueada(psiId, fecha, bloque.hora, bloqueos)) continue;
         const key = `${psiId}|${fecha}|${bloque.hora}`;
         if (existentes.has(key)) continue;
