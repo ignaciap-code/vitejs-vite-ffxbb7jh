@@ -23,9 +23,8 @@ const PLANTILLA_FIJA: Record<number, { dia: number; hora: string }[]> = {
     { dia: 5, hora: '10:00' }, { dia: 5, hora: '12:00' },
   ],
   5: [ // Macarena Lisperguer (desde el 12-11-2026)
-    { dia: 1, hora: '10:00' },
     { dia: 2, hora: '11:00' }, { dia: 2, hora: '15:00' },
-    { dia: 3, hora: '10:00' }, { dia: 3, hora: '15:00' },
+    { dia: 3, hora: '10:00' }, { dia: 3, hora: '11:00' }, { dia: 3, hora: '15:00' },
     { dia: 4, hora: '15:00' },
     { dia: 5, hora: '12:00' },
   ],

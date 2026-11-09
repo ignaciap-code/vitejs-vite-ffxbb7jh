@@ -6,6 +6,7 @@ const CORREOS_PSICOLOGAS: Record<string, string> = {
   'Trinidad Montes': 'tmontes@uft.cl',
   'Andrea García': 'andreagarcia@uft.cl',
   'Antonia Escalona': 'antoniaescalona95@gmail.com',
+  'Macarena Lisperguer': 'mlisperguer@uft.cl',
 };
 
 function formatFecha(fecha: string) {

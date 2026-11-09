@@ -6,7 +6,7 @@ const PSICOLOGAS: Record<number, { nombre: string; correo: string }> = {
   2: { nombre: 'Trinidad Montes', correo: 'tmontes@uft.cl' },
   3: { nombre: 'Andrea García', correo: 'andreagarcia@uft.cl' },
   4: { nombre: 'Antonia Escalona', correo: 'antoniaescalona95@gmail.com' },
-  5: { nombre: 'Macarena Lisperguer', correo: '' },
+  5: { nombre: 'Macarena Lisperguer', correo: 'mlisperguer@uft.cl' },
 };
 
 function formatFecha(fecha: string) {
