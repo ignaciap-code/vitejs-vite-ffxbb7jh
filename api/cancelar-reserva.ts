@@ -39,6 +39,15 @@ export default async function handler(req: any, res: any) {
 
   if (errUpdate) return res.status(500).json({ error: errUpdate.message });
 
+  // Registro para la pestaña Seguimiento del panel (no bloquea la cancelación si falla).
+  await supabaseAdmin.from('slots_log').insert({
+    slot_id: slot.id, psicologa_id: slot.psicologa_id, fecha: slot.fecha, hora: slot.hora,
+    accion: 'cancelada_estudiante',
+    nombre_estudiante: slot.nombre_estudiante || null,
+    correo_estudiante: slot.correo_estudiante || null,
+    rut_estudiante: slot.rut_estudiante || null,
+  });
+
   return res.status(200).json({
     ok: true,
     slot: { psicologa_id: slot.psicologa_id, fecha: slot.fecha, hora: slot.hora, nombre_estudiante: slot.nombre_estudiante, correo_estudiante: slot.correo_estudiante },

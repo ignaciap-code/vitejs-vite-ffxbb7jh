@@ -750,12 +750,13 @@ interface RutBloqueado {
   fecha_desbloqueo: string | null;
 }
 
-async function registrarEliminacion(slot: Slot) {
+async function registrarEliminacion(slot: Slot, accion: 'eliminado' | 'cancelada_bloqueo' | 'cancelada_equipo' = 'eliminado') {
   await supabase.from('slots_log').insert({
     slot_id: slot.id, psicologa_id: slot.psicologa_id, fecha: slot.fecha,
-    hora: slot.hora, reserva_tipo: slot.reserva_tipo, accion: 'eliminado',
+    hora: slot.hora, reserva_tipo: slot.reserva_tipo, accion,
     nombre_estudiante: slot.nombre_estudiante || null,
     correo_estudiante: slot.correo_estudiante || null,
+    rut_estudiante: slot.rut_estudiante || null,
   });
 }
 
@@ -764,6 +765,22 @@ async function registrarBloqueo(psicologaId: number, fechaInicio: string, fechaF
     psicologa_id: psicologaId, fecha: fechaInicio, fecha_fin: fechaFin,
     motivo: motivo || null, accion, hora: hora || null, hora_hasta: horaHasta || null,
   });
+}
+
+const ACCIONES_SEGUIMIENTO: Record<string, { label: string; color: string }> = {
+  cancelada_estudiante: { label: 'Cancelada por el estudiante', color: '#b45309' },
+  cancelada_equipo: { label: 'Cancelada por el equipo', color: '#7c3aed' },
+  cancelada_bloqueo: { label: 'Cancelada por bloqueo de horario', color: '#0e7490' },
+  eliminado: { label: 'Hora eliminada con reserva', color: '#475569' },
+  no_show: { label: 'No asistió', color: '#b91c1c' },
+};
+
+async function cargarSeguimiento(): Promise<SlotLog[]> {
+  const { data } = await supabase.from('slots_log').select('*')
+    .in('accion', Object.keys(ACCIONES_SEGUIMIENTO))
+    .not('nombre_estudiante', 'is', null)
+    .order('eliminado_en', { ascending: false }).limit(500);
+  return (data as SlotLog[]) || [];
 }
 
 async function cargarBitacora(): Promise<SlotLog[]> {
@@ -823,7 +840,7 @@ async function desbloquearRut(rut: string) {
 // ─── PANEL ADMIN ──────────────────────────────────────────────────────────────
 function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: { slots: Slot[]; recargar: () => void; recargarConAutosanado: () => void; diasBloqueados: DiaBloqueado[] }) {
   const mostrarBitacora = typeof window !== 'undefined' && window.location.search.includes('bitacora');
-  const [tab, setTab] = useState<'horarios' | 'reservas' | 'bitacora' | 'bloqueados'>('reservas');
+  const [tab, setTab] = useState<'horarios' | 'reservas' | 'bitacora' | 'bloqueados' | 'seguimiento'>('reservas');
   const [psicologaFiltro, setPsicologaFiltro] = useState<number>(1);
   const [cargando, setCargando] = useState(false);
   const [nuevaFecha, setNuevaFecha] = useState('');
@@ -836,11 +853,15 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
   const [bloqueoHoraDesde, setBloqueoHoraDesde] = useState('');
   const [bloqueoHoraHasta, setBloqueoHoraHasta] = useState('');
   const [bitacora, setBitacora] = useState<SlotLog[]>([]);
+  const [seguimiento, setSeguimiento] = useState<SlotLog[]>([]);
+  const [segTipo, setSegTipo] = useState('');
+  const [segPsi, setSegPsi] = useState(0);
   const [rutsBloqueados, setRutsBloqueados] = useState<RutBloqueado[]>([]);
   const [notificarEstudiantes, setNotificarEstudiantes] = useState(true);
 
   useEffect(() => {
     if (tab === 'bitacora') cargarBitacora().then(setBitacora);
+    if (tab === 'seguimiento') cargarSeguimiento().then(setSeguimiento);
     if (tab === 'bloqueados') cargarRutsBloqueados().then(setRutsBloqueados);
   }, [tab]);
 
@@ -903,7 +924,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
           }
       }
       // La hora queda dentro del bloqueo: se elimina, NO se vuelve a dejar disponible.
-      await registrarEliminacion(s);
+      await registrarEliminacion(s, 'cancelada_bloqueo');
       await supabase.from('slots').delete().eq('id', s.id);
     }
 
@@ -1005,6 +1026,8 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
 
   async function cancelarAdmin(id: string) {
     setCargando(true);
+    const slotCancelado = slots.find(s => s.id === id);
+    if (slotCancelado) await registrarEliminacion(slotCancelado, 'cancelada_equipo');
     await supabase.from('slots').update({
       disponible: true, nombre_estudiante: null,
       rut_estudiante: null, carrera: null, correo_estudiante: null,
@@ -1019,7 +1042,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 900, color: '#1a1040', marginBottom: 4 }}>Panel de psicólogas</h2>
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid #ede9f8' }}>
-        {([['reservas', '📋 Reservas activas'], ['horarios', '🗓 Gestionar horarios'], ['bloqueados', '🚫 RUTs bloqueados'], ...(mostrarBitacora ? [['bitacora', '🕵️ Bitácora']] : [])] as [typeof tab, string][]).map(([t, label]) => (
+        {([['reservas', '📋 Reservas activas'], ['horarios', '🗓 Gestionar horarios'], ['bloqueados', '🚫 RUTs bloqueados'], ['seguimiento', '🔎 Seguimiento'], ...(mostrarBitacora ? [['bitacora', '🕵️ Bitácora']] : [])] as [typeof tab, string][]).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '10px 16px', border: 'none', background: 'none',
             fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
@@ -1053,6 +1076,40 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
         })}
       </div>
 
+      {tab === 'seguimiento' && (() => {
+        const filtrados = seguimiento.filter(l => (!segTipo || l.accion === segTipo) && (!segPsi || l.psicologa_id === segPsi));
+        const selStyle = { padding: '8px 10px', borderRadius: 8, border: '1.5px solid #dcd7f0', fontSize: 13, fontFamily: 'inherit', background: 'white' };
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 12, color: '#a89ec0' }}>Estudiantes con horas canceladas, eliminadas o con inasistencia. Las cancelaciones se registran desde el 9 de noviembre de 2026.</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+              <select value={segTipo} onChange={e => setSegTipo(e.target.value)} style={selStyle}>
+                <option value=''>Todos los tipos</option>
+                {Object.entries(ACCIONES_SEGUIMIENTO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <select value={segPsi} onChange={e => setSegPsi(Number(e.target.value))} style={selStyle}>
+                <option value={0}>Todas las psicólogas</option>
+                {PSICOLOGAS.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select>
+              <span style={{ fontSize: 12, color: '#7b6fa0', alignSelf: 'center' }}>{filtrados.length} registro(s)</span>
+            </div>
+            {filtrados.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#a89ec0' }}>Sin registros</div>
+            ) : filtrados.map(log => {
+              const tipo = ACCIONES_SEGUIMIENTO[log.accion];
+              return (
+                <div key={log.id} style={{ background: 'white', borderRadius: 10, padding: '10px 14px', border: '1.5px solid #ede9f8', borderLeft: `4px solid ${tipo.color}`, fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, color: tipo.color, fontSize: 12 }}>{tipo.label}</div>
+                  <div style={{ marginTop: 2 }}><strong>{log.nombre_estudiante}</strong>{log.rut_estudiante ? ` · ${log.rut_estudiante}` : ''}{log.correo_estudiante ? ` · ${log.correo_estudiante}` : ''}</div>
+                  <div style={{ fontSize: 12, color: '#7b6fa0', marginTop: 2 }}>Hora: {formatFecha(log.fecha)} · {log.hora} · {PSICOLOGAS.find(p => p.id === log.psicologa_id)?.nombre ?? 'Psicóloga anterior'}</div>
+                  <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>Registrado: {new Date(log.eliminado_en).toLocaleString('es-CL')}</div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {tab === 'bitacora' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 12, color: '#a89ec0', marginBottom: 4 }}>Últimos movimientos (todas las psicólogas)</div>
@@ -1065,6 +1122,7 @@ function PanelAdmin({ slots, recargar, recargarConAutosanado, diasBloqueados }: 
                 {log.accion === 'eliminado' && (<>{' · 🗑 eliminó '}{formatFecha(log.fecha)} · {log.hora}{log.reserva_tipo === 'fijo' && <span style={{ color: '#b91c1c', fontWeight: 700 }}> (era fijo)</span>}{log.nombre_estudiante && (<div style={{ fontSize: 12, color: '#7b6fa0', marginTop: 2 }}>Estudiante: {log.nombre_estudiante}{log.correo_estudiante ? ` · ${log.correo_estudiante}` : ''}</div>)}</>)}
                 {log.accion === 'bloqueo_creado' && (<>{' · 🏖 bloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}{log.hora && <span style={{ color: '#92702a' }}> ({log.hora_hasta ? `de ${log.hora} a ${log.hora_hasta}` : `solo ${log.hora}`})</span>}{log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}</>)}
                 {log.accion === 'bloqueo_eliminado' && (<>{' · ✅ desbloqueó del '}{formatFecha(log.fecha)}{' al '}{log.fecha_fin && formatFecha(log.fecha_fin)}{log.hora && <span style={{ color: '#92702a' }}> ({log.hora_hasta ? `de ${log.hora} a ${log.hora_hasta}` : `solo ${log.hora}`})</span>}{log.motivo && <span style={{ color: '#7b6fa0' }}> — {log.motivo}</span>}</>)}
+                {ACCIONES_SEGUIMIENTO[log.accion] && log.accion !== 'eliminado' && (<>{' · '}{ACCIONES_SEGUIMIENTO[log.accion].label.toLowerCase()}{' '}{formatFecha(log.fecha)} · {log.hora}{log.nombre_estudiante && (<div style={{ fontSize: 12, color: '#7b6fa0', marginTop: 2 }}>Estudiante: {log.nombre_estudiante}{log.correo_estudiante ? ` · ${log.correo_estudiante}` : ''}</div>)}</>)}
                 {log.accion === 'no_agendada' && (<>{' · 📭 venció sin agendar '}{formatFecha(log.fecha)} · {log.hora}</>)}
                 <div style={{ fontSize: 11, color: '#a89ec0', marginTop: 2 }}>{new Date(log.eliminado_en).toLocaleString('es-CL')}</div>
               </div>
